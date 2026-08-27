@@ -25,14 +25,18 @@ This README describes what exists. Anything still to come is under
         +----------------------+
                    |
                    |  one transaction:
-                   |    payment row + idempotency row
+                   |    payment row + idempotency row + outbox event
                    v
         +----------------------+
         |      PostgreSQL      |
         |  payments            |
         |  idempotency_keys    |
-        |  outbox (unused yet) |
+        |  outbox              |
         +----------------------+
+                   |
+                   |  nothing drains this yet
+                   v
+              (dispatcher)
 ```
 
 Two endpoints:
@@ -110,14 +114,23 @@ running; they do not touch the compose environment.
 Built:
 
 - [x] Schema: `payments`, `idempotency_keys`, `outbox`
-- [x] Compose environment
+- [x] Compose environment, and an image that builds
 - [x] Create and fetch a payment, with idempotency enforced by a unique index
 - [x] Payment state machine and its transition rules
-- [x] 30 tests: integration against a real PostgreSQL, unit for the domain
+- [x] The created event written to `outbox` in the same transaction as the payment
+- [x] Retries on transient database faults, real command and connect timeouts
+- [x] A health check that fails when PostgreSQL does
+- [x] 51 tests: integration against real containers, unit for the domain
+
+Two things are worth knowing before reading further. Nothing moves a payment out
+of `created` yet: the transition rules are enforced and tested but have no
+production caller until the worker and the connectors exist. And there is no
+migration tooling — the schema is one script the Postgres entrypoint runs on an
+empty data directory, so changing it means recreating the volume.
 
 Next:
 
-- [ ] Write to `outbox` on every state change, and a dispatcher that drains it to Kafka
+- [ ] A dispatcher that drains `outbox` to Kafka
 - [ ] `Payments.Worker` as an idempotent consumer, with retries and a DLQ
 - [ ] Two provider connectors that fail on purpose: timeouts, duplicate
       callbacks, callbacks that arrive early
