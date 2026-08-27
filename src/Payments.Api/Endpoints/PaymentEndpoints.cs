@@ -1,14 +1,19 @@
+using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Payments.Api.Contracts;
 using Payments.Api.Domain;
 using Payments.Api.Persistence;
+using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Payments.Api.Endpoints;
 
 public static class PaymentEndpoints
 {
     private const string IdempotencyHeader = "Idempotency-Key";
+    private const int MaxIdempotencyKeyLength = 255;
 
     public static IEndpointRouteBuilder MapPayments(this IEndpointRouteBuilder app)
     {
@@ -29,51 +34,39 @@ public static class PaymentEndpoints
         CreatePaymentRequest request,
         [FromHeader(Name = IdempotencyHeader)] string? idempotencyKey,
         PaymentStore store,
+        IOptions<JsonOptions> jsonOptions,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        if (Validate(request, idempotencyKey, out var amount) is { } failure)
         {
-            return Problem(StatusCodes.Status400BadRequest, "Missing idempotency key",
-                $"A {IdempotencyHeader} header is required so that a retried request cannot charge twice.");
+            return failure;
         }
 
-        if (idempotencyKey.Length > 255)
-        {
-            return Problem(StatusCodes.Status400BadRequest, "Invalid idempotency key",
-                $"{IdempotencyHeader} must be at most 255 characters.");
-        }
+        var payment = Payment.Create(request.MerchantId, amount);
 
-        if (request.MerchantId == Guid.Empty)
-        {
-            return Problem(StatusCodes.Status400BadRequest, "Invalid request", "merchantId is required.");
-        }
-
-        if (!Money.TryCreate(request.AmountMinor, request.Currency, out var amount, out var error))
-        {
-            return Problem(StatusCodes.Status400BadRequest, "Invalid request", error!);
-        }
+        // Rendered here, not in the store: the API owns its representation, and
+        // using the framework's own options means a replayed body is byte for
+        // byte what a fresh one would have been.
+        var response = new StoredResponse(
+            StatusCodes.Status201Created,
+            JsonSerializer.Serialize(PaymentResponse.From(payment), jsonOptions.Value.SerializerOptions));
 
         var outcome = await store.CreateAsync(
-            request.MerchantId, idempotencyKey, RequestHash.Of(request), amount, ct);
+            payment, idempotencyKey!, RequestHash.Of(request), response, ct);
 
         return outcome switch
         {
-            { Kind: CreateOutcomeKind.Created, Response: { } r } =>
-                Results.Content(r.Body, "application/json", statusCode: r.StatusCode),
+            CreateOutcome.Created => Json(response),
 
-            { Kind: CreateOutcomeKind.Replayed, Response: { } r } =>
-                Results.Content(r.Body, "application/json", statusCode: r.StatusCode),
+            CreateOutcome.Replayed replayed => Json(replayed.Response),
 
-            // The key is held by a request that has not committed yet.
-            { Kind: CreateOutcomeKind.Replayed, Response: null } =>
-                Problem(StatusCodes.Status409Conflict, "Request in flight",
-                    "Another request with this idempotency key is still being processed. Retry shortly."),
+            CreateOutcome.InFlight => Problem(StatusCodes.Status409Conflict, "Request in flight",
+                "Another request with this idempotency key is still being processed. Retry shortly."),
 
-            { Kind: CreateOutcomeKind.KeyReused } =>
-                Problem(StatusCodes.Status422UnprocessableEntity, "Idempotency key reused",
-                    "This idempotency key was already used with a different request body."),
+            CreateOutcome.KeyReused => Problem(StatusCodes.Status422UnprocessableEntity, "Idempotency key reused",
+                "This idempotency key was already used with a different request body."),
 
-            _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
+            _ => throw new UnreachableException($"Unhandled outcome {outcome.GetType().Name}.")
         };
     }
 
@@ -81,10 +74,41 @@ public static class PaymentEndpoints
         Guid id, PaymentStore store, CancellationToken ct)
     {
         var payment = await store.GetAsync(id, ct);
+
         return payment is null
             ? TypedResults.NotFound()
             : TypedResults.Ok(PaymentResponse.From(payment));
     }
+
+    /// <summary>Returns a problem response if the request cannot be accepted, otherwise null.</summary>
+    private static IResult? Validate(CreatePaymentRequest request, string? idempotencyKey, out Money amount)
+    {
+        amount = default;
+
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return Problem(StatusCodes.Status400BadRequest, "Missing idempotency key",
+                $"An {IdempotencyHeader} header is required so that a retried request cannot charge twice.");
+        }
+
+        if (idempotencyKey.Length > MaxIdempotencyKeyLength)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "Invalid idempotency key",
+                $"{IdempotencyHeader} must be at most {MaxIdempotencyKeyLength} characters.");
+        }
+
+        if (request.MerchantId == Guid.Empty)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "Invalid request", "merchantId is required.");
+        }
+
+        return Money.TryCreate(request.AmountMinor, request.Currency, out amount, out var error)
+            ? null
+            : Problem(StatusCodes.Status400BadRequest, "Invalid request", error!);
+    }
+
+    private static IResult Json(StoredResponse response)
+        => Results.Content(response.Body, "application/json", statusCode: response.StatusCode);
 
     private static IResult Problem(int status, string title, string detail)
         => Results.Problem(detail: detail, title: title, statusCode: status);

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using Payments.Api.Domain;
 
 namespace Payments.Api.Contracts;
@@ -22,14 +21,17 @@ public sealed record PaymentResponse(
     string Currency,
     DateTimeOffset CreatedAt)
 {
+    /// <remarks>
+    /// The status goes out as the same text the database stores, produced by the
+    /// one mapping in <see cref="PaymentStatuses"/>. Serialising the enum
+    /// directly would make the public contract depend on C# member names and on
+    /// whatever enum naming policy happened to be configured.
+    /// </remarks>
     public static PaymentResponse From(Payment payment) => new(
         payment.Id,
         payment.MerchantId,
-        payment.Status,
+        PaymentStatuses.ToWire(payment.Status),
         payment.AmountMinor,
         payment.Currency,
         payment.CreatedAt);
 }
-
-[JsonSerializable(typeof(PaymentResponse))]
-internal sealed partial class PaymentJsonContext : JsonSerializerContext;

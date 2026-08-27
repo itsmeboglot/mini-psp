@@ -19,9 +19,10 @@ alongside an ISO 4217 code. `12.34 USD` is `{ "amount_minor": 1234, "currency":
 "USD" }`.
 
 * PostgreSQL: `bigint` plus `char(3)`.
-* C#: a `Money` value type wrapping `long` and a currency code. No implicit
-  conversion from `double`, and arithmetic across two currencies does not
-  compile.
+* C#: a `Money` value type wrapping `long` and a currency code, constructed
+  only through validation. No implicit conversion from `double` exists. When
+  arithmetic is added it will be defined on the type, so mixing currencies fails
+  to compile rather than at runtime.
 * Transport: integers in JSON. Never a decimal string, never a float.
 
 Rounding is never implicit. Any operation that cannot produce an exact minor-unit

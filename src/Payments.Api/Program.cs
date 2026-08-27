@@ -2,6 +2,7 @@ using Dapper;
 using Payments.Api.Endpoints;
 using Payments.Api.Persistence;
 
+// Dapper's handler registry is process wide, so it is configured once here.
 SqlMapper.AddTypeHandler(new DateTimeOffsetHandler());
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,7 +10,10 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Payments")
     ?? throw new InvalidOperationException("ConnectionStrings:Payments is not configured.");
 
-builder.Services.AddSingleton(new DbConnectionFactory(connectionString));
+// Registered through a factory rather than as a ready-made instance: the
+// container only disposes what it creates, and this owns an Npgsql data source
+// that holds a connection pool.
+builder.Services.AddSingleton(_ => new DbConnectionFactory(connectionString));
 builder.Services.AddScoped<PaymentStore>();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
