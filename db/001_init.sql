@@ -65,7 +65,11 @@ CREATE TABLE idempotency_keys (
     response_body   text        NOT NULL,
     created_at      timestamptz NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (merchant_id, idempotency_key)
+    -- Named explicitly. The application matches on this name to tell a
+    -- duplicate key apart from any other unique violation raised in the
+    -- same transaction, so the name is a contract, not an accident of
+    -- PostgreSQL's default naming.
+    CONSTRAINT idempotency_keys_pkey PRIMARY KEY (merchant_id, idempotency_key)
 );
 
 -- PostgreSQL does not index a foreign key column automatically, and without

@@ -13,6 +13,14 @@ namespace Payments.Api.Persistence;
 /// </remarks>
 public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> logger)
 {
+    /// <summary>
+    /// The unique constraint that makes creation idempotent, named explicitly in
+    /// db/001_init.sql. Matching on it matters because more than one unique
+    /// constraint is touched by the create transaction, and they all raise the
+    /// same SQLSTATE.
+    /// </summary>
+    private const string IdempotencyKeyConstraint = "idempotency_keys_pkey";
+
     private const string InsertPayment = """
         INSERT INTO payments (id, merchant_id, status, amount_minor, currency, version, created_at, updated_at)
         VALUES (@Id, @MerchantId, @Status, @AmountMinor, @Currency, @Version, @CreatedAt, @CreatedAt);
@@ -89,7 +97,8 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
             await transaction.CommitAsync(ct);
             return new CreateOutcome.Created();
         }
-        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation)
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation
+                                         && e.ConstraintName == IdempotencyKeyConstraint)
         {
             await transaction.RollbackAsync(ct);
             return await ResolveDuplicateAsync(payment.MerchantId, idempotencyKey, requestHash, ct);
