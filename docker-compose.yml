@@ -39,7 +39,10 @@ services:
       - --overprovisioned
       - --node-id=0
       - --check=false
-      - --set=redpanda.auto_create_topics_enabled=true
+      # Two tokens, not --set=x: rpk consumes this itself, and joined with an
+      # equals sign it gets forwarded to the broker, which rejects it.
+      - --set
+      - redpanda.auto_create_topics_enabled=true
       - --kafka-addr=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
       - --advertise-kafka-addr=INTERNAL://redpanda:29092,EXTERNAL://localhost:9092
     ports:
