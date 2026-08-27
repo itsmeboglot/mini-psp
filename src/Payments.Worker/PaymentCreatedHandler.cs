@@ -50,7 +50,7 @@ public sealed class PaymentCreatedHandler(PaymentStore payments, ILogger<Payment
 
         var pending = payment.TransitionTo(PaymentStatus.Pending);
 
-        if (!await payments.TryApplyTransitionAsync(connection, transaction, pending, payment.Version, ct))
+        if (!await payments.TryApplyTransitionAsync(connection, transaction, pending, payment.Version, ct: ct))
         {
             // Someone moved it between the read and the write. Decline, so the
             // event is not recorded as processed and can be delivered again.

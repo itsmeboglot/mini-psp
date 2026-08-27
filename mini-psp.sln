@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payments.Core", "src\Paymen
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payments.Worker", "src\Payments.Worker\Payments.Worker.csproj", "{A645B90A-2DFD-4FF7-B632-144C862079B6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payments.FakeProvider", "src\Payments.FakeProvider\Payments.FakeProvider.csproj", "{63C0B53F-EB45-49AC-8804-E58F1BD1383D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -73,6 +75,18 @@ Global
 		{A645B90A-2DFD-4FF7-B632-144C862079B6}.Release|x64.Build.0 = Release|Any CPU
 		{A645B90A-2DFD-4FF7-B632-144C862079B6}.Release|x86.ActiveCfg = Release|Any CPU
 		{A645B90A-2DFD-4FF7-B632-144C862079B6}.Release|x86.Build.0 = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|x64.Build.0 = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Debug|x86.Build.0 = Debug|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|x64.ActiveCfg = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|x64.Build.0 = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|x86.ActiveCfg = Release|Any CPU
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -82,5 +96,6 @@ Global
 		{E9A63185-D545-4412-AE47-7753841F3F8D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{BEE3F7E0-80E8-40BD-BD6D-ADBE564F2EC6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A645B90A-2DFD-4FF7-B632-144C862079B6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{63C0B53F-EB45-49AC-8804-E58F1BD1383D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

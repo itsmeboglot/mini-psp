@@ -123,27 +123,45 @@ public sealed class PaymentEventConsumer(
 
     private async Task DispatchAsync(string? eventType, long eventId, string payload, CancellationToken ct)
     {
-        if (eventType != PaymentCreatedEvent.EventType)
-        {
-            // Other event types share the topic so that ordering per payment
-            // survives. Ignoring them is normal, not a failure.
-            logger.LogDebug("Ignoring {EventType}", eventType);
-            return;
-        }
-
-        // One scope per message: a fresh handler and a fresh connection, released
+        // One scope per message: fresh handlers and a fresh connection, released
         // as soon as the message is done with.
         using var scope = scopes.CreateScope();
-        var processor = scope.ServiceProvider.GetRequiredService<IdempotentEventProcessor>();
-        var handler = scope.ServiceProvider.GetRequiredService<PaymentCreatedHandler>();
 
-        var outcome = await processor.ProcessAsync(
-            _consumer.Name,
-            eventId,
-            (connection, transaction, token) => handler.HandleAsync(payload, connection, transaction, token),
-            ct);
+        switch (eventType)
+        {
+            case PaymentCreatedEvent.EventType:
+            {
+                var processor = scope.ServiceProvider.GetRequiredService<IdempotentEventProcessor>();
+                var handler = scope.ServiceProvider.GetRequiredService<PaymentCreatedHandler>();
 
-        logger.LogDebug("Event {EventId}: {Outcome}", eventId, outcome);
+                var outcome = await processor.ProcessAsync(
+                    _consumer.Name,
+                    eventId,
+                    (connection, transaction, token) => handler.HandleAsync(payload, connection, transaction, token),
+                    ct);
+
+                logger.LogDebug("Event {EventId}: {Outcome}", eventId, outcome);
+                return;
+            }
+
+            case PaymentPendingEvent.EventType:
+            {
+                // Not wrapped in the idempotent processor, because the provider
+                // call must happen outside a transaction and there is nothing to
+                // commit alongside a record of having started. Redelivery is made
+                // safe by two other things instead: the handler only acts on a
+                // payment still in pending, and the charge carries an idempotency
+                // key the provider recognises.
+                await scope.ServiceProvider.GetRequiredService<PaymentPendingHandler>().HandleAsync(payload, ct);
+                return;
+            }
+
+            default:
+                // Every event type shares one topic so that ordering per payment
+                // survives. Ignoring the rest is normal, not a failure.
+                logger.LogDebug("Ignoring {EventType}", eventType);
+                return;
+        }
     }
 
     private async Task DeadLetterAsync(

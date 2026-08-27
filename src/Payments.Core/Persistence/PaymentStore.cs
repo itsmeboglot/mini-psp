@@ -46,7 +46,13 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
 
     private const string ApplyTransition = """
         UPDATE payments
-        SET status = @Status, version = @Version, updated_at = now()
+        SET status = @Status,
+            version = @Version,
+            updated_at = now(),
+            -- COALESCE so a transition that knows nothing about a provider does
+            -- not erase what an earlier one recorded.
+            provider = COALESCE(@Provider, provider),
+            provider_payment_id = COALESCE(@ProviderReference, provider_payment_id)
         WHERE id = @Id AND version = @ExpectedVersion;
         """;
 
@@ -199,14 +205,18 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         NpgsqlTransaction transaction,
         Payment transitioned,
         int expectedVersion,
-        CancellationToken ct)
+        string? provider = null,
+        string? providerReference = null,
+        CancellationToken ct = default)
     {
         var updated = await connection.ExecuteAsync(new CommandDefinition(ApplyTransition, new
         {
             transitioned.Id,
             Status = PaymentStatuses.ToWire(transitioned.Status),
             transitioned.Version,
-            ExpectedVersion = expectedVersion
+            ExpectedVersion = expectedVersion,
+            Provider = provider,
+            ProviderReference = providerReference
         }, transaction, cancellationToken: ct));
 
         return updated == 1;
