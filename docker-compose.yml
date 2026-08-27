@@ -28,19 +28,20 @@ services:
       timeout: 3s
       retries: 10
 
-  # Added once src/Payments.Api exists:
-  #
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: src/Payments.Api/Dockerfile
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
+  api:
+    build:
+      context: .
+      dockerfile: src/Payments.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Payments: "Host=postgres;Port=5432;Database=minipsp;Username=minipsp;Password=minipsp"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
