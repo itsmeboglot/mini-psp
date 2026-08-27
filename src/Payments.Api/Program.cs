@@ -1,5 +1,7 @@
 using Dapper;
 using Payments.Api.Endpoints;
+using Payments.Api.Messaging;
+using Payments.Api.Outbox;
 using Payments.Api.Persistence;
 
 // Dapper's handler registry is process wide, so it is configured once here.
@@ -19,6 +21,15 @@ builder.Services.AddScoped<PaymentStore>();
 // Time is injected rather than read from DateTimeOffset.UtcNow so that expiry and
 // reconciliation behaviour can be tested at chosen instants.
 builder.Services.AddSingleton(TimeProvider.System);
+
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.Section));
+builder.Services.Configure<OutboxOptions>(builder.Configuration.GetSection(OutboxOptions.Section));
+builder.Services.AddScoped<OutboxStore>();
+builder.Services.AddSingleton<EventPublisher>();
+if (builder.Configuration.GetValue($"{OutboxOptions.Section}:{nameof(OutboxOptions.Enabled)}", true))
+{
+    builder.Services.AddHostedService<OutboxDispatcher>();
+}
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres");
 builder.Services.AddOpenApi();

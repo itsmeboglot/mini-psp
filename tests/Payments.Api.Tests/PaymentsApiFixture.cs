@@ -37,7 +37,13 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
-        => builder.UseSetting("ConnectionStrings:Payments", ConnectionString);
+    {
+        builder.UseSetting("ConnectionStrings:Payments", ConnectionString);
+
+        // No broker in this fixture, so the dispatcher would spend every test
+        // backing off against nothing. Dispatching has its own fixture.
+        builder.UseSetting("Outbox:Enabled", "false");
+    }
 
     public async Task<long> CountPaymentsAsync(Guid merchantId)
     {
@@ -93,6 +99,22 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
             WHERE p.id IS NULL
             """);
     }
+
+    /// <summary>The bookkeeping columns of a merchant's single outbox event.</summary>
+    public async Task<OutboxState> ReadOutboxStateAsync(Guid merchantId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.QuerySingleAsync<OutboxState>(
+            """
+            SELECT attempts AS Attempts, published_at AS PublishedAt,
+                   dead_at AS DeadAt, last_error AS LastError
+            FROM outbox
+            WHERE payload->>'merchantId' = @merchantId
+            """, new { merchantId = merchantId.ToString() });
+    }
+
+    public sealed record OutboxState(
+        int Attempts, DateTimeOffset? PublishedAt, DateTimeOffset? DeadAt, string? LastError);
 
     public async Task<OutboxRow> ReadOutboxAsync(Guid aggregateId)
     {

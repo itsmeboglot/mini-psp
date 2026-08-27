@@ -85,13 +85,21 @@ CREATE TABLE outbox (
     event_type   text        NOT NULL,
     payload      jsonb       NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
-    published_at timestamptz NULL
+    published_at timestamptz NULL,
+    -- Publishing is retried, so the count has to survive the process that was
+    -- doing it. A row that keeps failing is set aside rather than left to block
+    -- everything behind it.
+    attempts     integer     NOT NULL DEFAULT 0,
+    last_error   text        NULL,
+    dead_at      timestamptz NULL
 );
 
--- Partial index: the dispatcher only ever reads unpublished rows, so published
--- ones must not bloat the index it scans.
-CREATE INDEX outbox_unpublished_idx
-    ON outbox (created_at)
-    WHERE published_at IS NULL;
+-- Partial index: the dispatcher only ever reads rows still waiting to go out, so
+-- published and dead ones must not bloat the index it scans. Ordered by id
+-- rather than created_at because the identity column is strictly monotonic and
+-- created_at can tie.
+CREATE INDEX outbox_pending_idx
+    ON outbox (id)
+    WHERE published_at IS NULL AND dead_at IS NULL;
 
 COMMIT;
