@@ -69,6 +69,28 @@ public sealed class IdempotencyTests(PaymentsApiFixture fixture) : IClassFixture
         Assert.Equal(1, await fixture.CountPaymentsAsync(merchantId));
     }
 
+    /// <summary>
+    /// Guards the reason response_body is text and not jsonb: jsonb reparses and
+    /// reorders keys, so a replay would return the same object with a different
+    /// byte sequence. A client that signs or hashes the body would see a mismatch.
+    /// </summary>
+    [Fact]
+    public async Task A_replayed_response_is_byte_identical_to_the_first()
+    {
+        var client = fixture.CreateClient();
+        var merchantId = Guid.NewGuid();
+        var key = Guid.NewGuid().ToString();
+
+        var first = await PostAsync(client, merchantId, 4242, "GBP", key);
+        var replay = await PostAsync(client, merchantId, 4242, "GBP", key);
+
+        var firstBody = await first.Content.ReadAsStringAsync();
+        var replayBody = await replay.Content.ReadAsStringAsync();
+
+        Assert.Equal(firstBody, replayBody);
+        Assert.Equal(first.StatusCode, replay.StatusCode);
+    }
+
     [Fact]
     public async Task Reusing_a_key_with_a_different_body_is_rejected()
     {

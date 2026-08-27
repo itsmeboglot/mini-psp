@@ -1,0 +1,20 @@
+# Build output. Copying these into the image overwrites the restore done inside
+# it, and the assets file carries host paths, so the build fails with NETSDK1064.
+**/bin/
+**/obj/
+artifacts/
+
+.git/
+.gitignore
+.gitattributes
+.vs/
+.vscode/
+.idea/
+
+docs/
+README.md
+tests/
+db/
+docker-compose.yml
+**/.dockerignore
+**/Dockerfile

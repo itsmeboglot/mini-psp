@@ -100,8 +100,15 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation
                                          && e.ConstraintName == IdempotencyKeyConstraint)
         {
-            await transaction.RollbackAsync(ct);
-            return await ResolveDuplicateAsync(payment.MerchantId, idempotencyKey, requestHash, ct);
+            // Not ct: if the caller has already disconnected, its token is
+            // cancelled, and a cancelled rollback would throw over the top of the
+            // violation we are here to handle.
+            await transaction.RollbackAsync(CancellationToken.None);
+
+            // The connection is still open and no longer in a transaction, so the
+            // lookup reuses it instead of taking a second one from the pool.
+            return await ResolveDuplicateAsync(
+                connection, payment.MerchantId, idempotencyKey, requestHash, ct);
         }
     }
 
@@ -118,9 +125,12 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
     /// Works out which kind of duplicate this was, once the index has rejected it.
     /// </summary>
     private async Task<CreateOutcome> ResolveDuplicateAsync(
-        Guid merchantId, string idempotencyKey, string requestHash, CancellationToken ct)
+        NpgsqlConnection connection,
+        Guid merchantId,
+        string idempotencyKey,
+        string requestHash,
+        CancellationToken ct)
     {
-        await using var connection = await db.OpenAsync(ct);
         var stored = await connection.QuerySingleOrDefaultAsync<StoredRow>(
             new CommandDefinition(SelectStored,
                 new { MerchantId = merchantId, Key = idempotencyKey }, cancellationToken: ct));

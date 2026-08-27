@@ -20,6 +20,7 @@ builder.Services.AddScoped<PaymentStore>();
 // reconciliation behaviour can be tested at chosen instants.
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres");
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -32,7 +33,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).ExcludeFromDescription();
+app.MapHealthChecks("/health").ExcludeFromDescription();
 app.MapPayments();
 
 app.Run();

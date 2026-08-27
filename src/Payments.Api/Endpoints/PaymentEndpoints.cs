@@ -19,9 +19,16 @@ public static class PaymentEndpoints
     {
         var group = app.MapGroup("/v1/payments").WithTags("Payments");
 
-        group.MapPost("/", CreateAsync)
+        // "" maps the group prefix exactly; "/" would publish /v1/payments/.
+        group.MapPost("", CreateAsync)
             .WithName("CreatePayment")
-            .WithSummary("Creates a payment. Requires an Idempotency-Key header.");
+            .WithSummary("Creates a payment. Requires an Idempotency-Key header.")
+            // Declared by hand because the created and replayed responses are
+            // written as pre-serialised content, which carries no type metadata.
+            .Produces<PaymentResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapGet("/{id:guid}", GetAsync)
             .WithName("GetPayment")
