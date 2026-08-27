@@ -17,6 +17,7 @@ var connectionString = builder.Configuration.GetConnectionString("Payments")
 // that holds a connection pool.
 builder.Services.AddSingleton(_ => new DbConnectionFactory(connectionString));
 builder.Services.AddScoped<PaymentStore>();
+builder.Services.AddSingleton<MigrationRunner>();
 
 // Time is injected rather than read from DateTimeOffset.UtcNow so that expiry and
 // reconciliation behaviour can be tested at chosen instants.
@@ -35,6 +36,10 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres");
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// Before anything serves a request or dispatches an event against a schema that
+// might be older than this build.
+await app.Services.GetRequiredService<MigrationRunner>().RunAsync(CancellationToken.None);
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

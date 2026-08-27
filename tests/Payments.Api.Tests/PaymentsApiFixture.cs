@@ -1,6 +1,8 @@
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Logging.Abstractions;
+using Payments.Api.Persistence;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -26,8 +28,12 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
     {
         await _postgres.StartAsync();
 
-        await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.ExecuteAsync(await File.ReadAllTextAsync(FindSchemaFile()));
+        // The same runner the application uses, rather than a copy of the schema
+        // that could drift from it.
+        await new MigrationRunner(
+                new DbConnectionFactory(ConnectionString),
+                NullLogger<MigrationRunner>.Instance)
+            .RunAsync(CancellationToken.None);
     }
 
     async Task IAsyncLifetime.DisposeAsync()
@@ -128,22 +134,4 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
 
     public sealed record OutboxRow(Guid AggregateId, string EventType, string Payload);
 
-    /// <summary>Walks up from the test binaries to the repository root.</summary>
-    private static string FindSchemaFile()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "db", "001_init.sql");
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("db/001_init.sql was not found above the test output directory.");
-    }
 }

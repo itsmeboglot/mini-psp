@@ -78,6 +78,7 @@ Recorded as ADRs, one per decision, in [`docs/adr`](docs/adr):
 | [0001](docs/adr/0001-transactional-outbox.md) | Events are published through a transactional outbox, not a dual write |
 | [0002](docs/adr/0002-money-as-minor-units.md) | Money is an integer count of minor units, never a floating point type |
 | [0003](docs/adr/0003-idempotency-in-postgres.md) | Idempotency is guaranteed by a unique index; Redis is only a cache |
+| [0004](docs/adr/0004-sql-migrations-over-ef-core.md) | The schema is versioned as SQL, not generated from an EF Core model |
 
 ADR 0001 and the Redis half of ADR 0003 describe decisions taken for work that is
 still ahead; they are recorded now because the schema and the API were shaped
@@ -86,10 +87,9 @@ around them.
 ## Stack
 
 In use: **.NET 9** · ASP.NET Core minimal API · **PostgreSQL 16** · **Dapper** ·
-Docker Compose · xUnit with **Testcontainers**
+**Kafka** (Redpanda locally) · Docker Compose · xUnit with **Testcontainers**
 
-Planned: Kafka, Redis, EF Core for migrations, OpenTelemetry. None of these are
-referenced by the code yet.
+Planned: Redis, OpenTelemetry. Neither is referenced by the code yet.
 
 ## Running it
 
@@ -98,9 +98,9 @@ docker compose up -d postgres
 dotnet run --project src/Payments.Api
 ```
 
-The schema in `db/` is applied by the Postgres entrypoint on first start. Compose
-also defines Redis, unused so far, and an `api` service that builds the
-Dockerfile.
+The API applies any pending migrations at startup, so an existing database is
+brought up to date rather than needing to be recreated. Compose also defines
+Redis, unused so far.
 
 ```bash
 dotnet test
@@ -120,17 +120,17 @@ Built:
 - [x] The created event written to `outbox` in the same transaction as the payment
 - [x] Retries on transient database faults, real command and connect timeouts
 - [x] A health check that fails when PostgreSQL does
-- [x] 51 tests: integration against real containers, unit for the domain
+- [x] A dispatcher that drains `outbox` to Kafka, telling an outage apart from a
+      message the broker will never accept
+- [x] Schema versioned as SQL migrations, applied at startup under an advisory lock
+- [x] 55 tests: integration against real containers, unit for the domain
 
 Two things are worth knowing before reading further. Nothing moves a payment out
 of `created` yet: the transition rules are enforced and tested but have no
-production caller until the worker and the connectors exist. And there is no
-migration tooling — the schema is one script the Postgres entrypoint runs on an
-empty data directory, so changing it means recreating the volume.
+production caller until the worker and the connectors exist. 
 
 Next:
 
-- [ ] A dispatcher that drains `outbox` to Kafka
 - [ ] `Payments.Worker` as an idempotent consumer, with retries and a DLQ
 - [ ] Two provider connectors that fail on purpose: timeouts, duplicate
       callbacks, callbacks that arrive early

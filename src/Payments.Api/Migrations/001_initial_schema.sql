@@ -8,7 +8,8 @@
 --     negligible at this size.
 --   * Every table carries created_at; mutable rows also carry updated_at.
 
-BEGIN;
+-- No BEGIN/COMMIT here: the runner wraps each migration in a transaction
+-- together with the row recording that it ran.
 
 CREATE TABLE payments (
     id                  uuid        PRIMARY KEY,
@@ -101,5 +102,3 @@ CREATE TABLE outbox (
 CREATE INDEX outbox_pending_idx
     ON outbox (id)
     WHERE published_at IS NULL AND dead_at IS NULL;
-
-COMMIT;

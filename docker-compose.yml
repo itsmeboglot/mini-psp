@@ -9,8 +9,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Runs only on an empty data directory. Replaced by real migrations later.
-      - ./db:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U minipsp -d minipsp"]
       interval: 5s
