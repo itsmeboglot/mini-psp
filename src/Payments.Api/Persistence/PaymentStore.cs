@@ -24,6 +24,9 @@ public sealed record CreateOutcome(CreateOutcomeKind Kind, StoredResponse? Respo
 
 public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> logger)
 {
+    /// <summary>Matches what ASP.NET Core uses, so a replayed body is byte-identical to a fresh one.</summary>
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private const string InsertPayment = """
         INSERT INTO payments (id, merchant_id, status, amount_minor, currency, version, created_at, updated_at)
         VALUES (@Id, @MerchantId, @Status, @AmountMinor, @Currency, @Version, @CreatedAt, @CreatedAt);
@@ -37,7 +40,7 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         """;
 
     private const string SelectStored = """
-        SELECT request_hash AS RequestHash, response_status AS StatusCode, response_body::text AS Body
+        SELECT request_hash AS RequestHash, response_status::int AS StatusCode, response_body::text AS Body
         FROM idempotency_keys
         WHERE merchant_id = @MerchantId AND idempotency_key = @Key;
         """;
@@ -79,7 +82,7 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
             Version: 1,
             CreatedAt: DateTimeOffset.UtcNow);
 
-        var body = JsonSerializer.Serialize(PaymentResponse.From(payment));
+        var body = JsonSerializer.Serialize(PaymentResponse.From(payment), JsonOptions);
 
         await using var conn = await db.OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);

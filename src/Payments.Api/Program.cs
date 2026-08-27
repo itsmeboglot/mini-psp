@@ -1,5 +1,8 @@
+using Dapper;
 using Payments.Api.Endpoints;
 using Payments.Api.Persistence;
+
+SqlMapper.AddTypeHandler(new DateTimeOffsetHandler());
 
 var builder = WebApplication.CreateBuilder(args);
 

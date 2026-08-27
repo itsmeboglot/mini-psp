@@ -100,24 +100,24 @@ Built:
 
 - [x] Schema: `payments`, `idempotency_keys`, `outbox`
 - [x] Compose environment: PostgreSQL, Redis
+- [x] `Payments.Api`: create and fetch a payment, with idempotency enforced
+- [x] Integration tests on real containers (Testcontainers)
 
 Next:
 
-- [ ] `Payments.Api`: create and fetch a payment, idempotency enforced
 - [ ] Outbox dispatcher and Kafka
 - [ ] `Payments.Worker` as an idempotent consumer, with a DLQ
 - [ ] Two provider connectors that fail on purpose: timeouts, duplicate
       callbacks, callbacks that arrive early
 - [ ] Double-entry ledger, with the invariant that entries sum to zero
 - [ ] Reconciliation of `unknown` payments
-- [ ] Integration tests on real containers (Testcontainers)
 
 ## Acceptance tests
 
 The project is done when these hold, not when the endpoints respond:
 
 1. The same idempotency key twice, including in parallel, yields one payment and
-   two identical responses.
+   two identical responses. **Covered.**
 2. A duplicate provider webhook causes one state change; the second is ignored
    without error.
 3. A webhook that arrives before the response to the request that caused it does
