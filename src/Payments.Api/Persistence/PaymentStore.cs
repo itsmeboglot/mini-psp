@@ -33,6 +33,11 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
             (@MerchantId, @Key, @RequestHash, @PaymentId, @ResponseStatus, @ResponseBody);
         """;
 
+    private const string InsertOutboxMessage = """
+        INSERT INTO outbox (aggregate_id, event_type, payload)
+        VALUES (@AggregateId, @EventType, @Payload::jsonb);
+        """;
+
     private const string SelectStored = """
         SELECT request_hash AS RequestHash, response_status AS StatusCode, response_body AS Body
         FROM idempotency_keys
@@ -62,9 +67,10 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         string idempotencyKey,
         string requestHash,
         StoredResponse response,
+        OutboxMessage message,
         CancellationToken ct)
         => TransientRetry.RunAsync(
-            token => AttemptCreateAsync(payment, idempotencyKey, requestHash, response, token),
+            token => AttemptCreateAsync(payment, idempotencyKey, requestHash, response, message, token),
             logger,
             ct);
 
@@ -73,6 +79,7 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         string idempotencyKey,
         string requestHash,
         StoredResponse response,
+        OutboxMessage message,
         CancellationToken ct)
     {
         await using var connection = await db.OpenAsync(ct);
@@ -103,6 +110,17 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
                 PaymentId = payment.Id,
                 ResponseStatus = response.StatusCode,
                 ResponseBody = response.Body
+            }, transaction, cancellationToken: ct));
+
+            // The event and the state change it describes commit together or not
+            // at all. This is the whole reason the outbox exists: publishing after
+            // the commit instead would leave a window where the payment is real
+            // and nobody downstream has heard of it.
+            await connection.ExecuteAsync(new CommandDefinition(InsertOutboxMessage, new
+            {
+                message.AggregateId,
+                message.EventType,
+                message.Payload
             }, transaction, cancellationToken: ct));
 
             await transaction.CommitAsync(ct);

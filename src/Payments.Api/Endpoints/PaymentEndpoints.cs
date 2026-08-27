@@ -59,8 +59,21 @@ public static class PaymentEndpoints
             StatusCodes.Status201Created,
             JsonSerializer.Serialize(PaymentResponse.From(payment), jsonOptions.Value.SerializerOptions));
 
+        var message = new OutboxMessage(
+            AggregateId: payment.Id,
+            EventType: PaymentCreatedEvent.EventType,
+            Payload: JsonSerializer.Serialize(
+                new PaymentCreatedEvent(
+                    payment.Id,
+                    payment.MerchantId,
+                    payment.Amount.MinorUnits,
+                    payment.Amount.Currency,
+                    PaymentStatuses.ToWire(payment.Status),
+                    payment.CreatedAt),
+                jsonOptions.Value.SerializerOptions));
+
         var outcome = await store.CreateAsync(
-            payment, idempotencyKey!, RequestHash.Of(request), response, ct);
+            payment, idempotencyKey!, RequestHash.Of(request), response, message, ct);
 
         return outcome switch
         {

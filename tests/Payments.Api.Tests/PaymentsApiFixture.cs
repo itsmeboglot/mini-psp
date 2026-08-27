@@ -46,6 +46,33 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
             "SELECT count(*) FROM payments WHERE merchant_id = @merchantId", new { merchantId });
     }
 
+    public async Task<long> CountOutboxAsync(Guid aggregateId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.ExecuteScalarAsync<long>(
+            "SELECT count(*) FROM outbox WHERE aggregate_id = @aggregateId", new { aggregateId });
+    }
+
+    public async Task<long> CountUnpublishedOutboxAsync(Guid aggregateId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.ExecuteScalarAsync<long>(
+            "SELECT count(*) FROM outbox WHERE aggregate_id = @aggregateId AND published_at IS NULL",
+            new { aggregateId });
+    }
+
+    public async Task<OutboxRow> ReadOutboxAsync(Guid aggregateId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.QuerySingleAsync<OutboxRow>(
+            """
+            SELECT aggregate_id AS AggregateId, event_type AS EventType, payload::text AS Payload
+            FROM outbox WHERE aggregate_id = @aggregateId
+            """, new { aggregateId });
+    }
+
+    public sealed record OutboxRow(Guid AggregateId, string EventType, string Payload);
+
     /// <summary>Walks up from the test binaries to the repository root.</summary>
     private static string FindSchemaFile()
     {
