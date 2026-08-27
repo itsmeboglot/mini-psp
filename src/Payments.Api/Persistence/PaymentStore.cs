@@ -22,11 +22,11 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         INSERT INTO idempotency_keys
             (merchant_id, idempotency_key, request_hash, payment_id, response_status, response_body)
         VALUES
-            (@MerchantId, @Key, @RequestHash, @PaymentId, @ResponseStatus, @ResponseBody::jsonb);
+            (@MerchantId, @Key, @RequestHash, @PaymentId, @ResponseStatus, @ResponseBody);
         """;
 
     private const string SelectStored = """
-        SELECT request_hash AS RequestHash, response_status::int AS StatusCode, response_body::text AS Body
+        SELECT request_hash AS RequestHash, response_status AS StatusCode, response_body AS Body
         FROM idempotency_keys
         WHERE merchant_id = @MerchantId AND idempotency_key = @Key;
         """;
@@ -82,7 +82,7 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
                 Key = idempotencyKey,
                 RequestHash = requestHash,
                 PaymentId = payment.Id,
-                ResponseStatus = (short)response.StatusCode,
+                ResponseStatus = response.StatusCode,
                 ResponseBody = response.Body
             }, transaction, cancellationToken: ct));
 
