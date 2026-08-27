@@ -61,6 +61,39 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
             new { aggregateId });
     }
 
+    /// <summary>
+    /// Counts events by the merchant inside the payload, not by aggregate id.
+    /// A rolled back attempt carries a payment id nobody ever sees, so counting by
+    /// aggregate would miss exactly the orphan these tests exist to catch.
+    /// This is also what the jsonb payload column buys: events are queryable by
+    /// content.
+    /// </summary>
+    public async Task<long> CountOutboxForMerchantAsync(Guid merchantId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.ExecuteScalarAsync<long>(
+            "SELECT count(*) FROM outbox WHERE payload->>'merchantId' = @merchantId",
+            new { merchantId = merchantId.ToString() });
+    }
+
+    /// <summary>
+    /// Events whose payment does not exist. Zero is an invariant of the outbox:
+    /// an event is only ever written in the transaction that creates the payment
+    /// it describes, so one without the other means that transaction was broken
+    /// apart.
+    /// </summary>
+    public async Task<long> CountOrphanEventsAsync()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.ExecuteScalarAsync<long>(
+            """
+            SELECT count(*)
+            FROM outbox o
+            LEFT JOIN payments p ON p.id = o.aggregate_id
+            WHERE p.id IS NULL
+            """);
+    }
+
     public async Task<OutboxRow> ReadOutboxAsync(Guid aggregateId)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
