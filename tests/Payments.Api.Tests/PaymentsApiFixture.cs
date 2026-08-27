@@ -2,7 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
-using Payments.Api.Persistence;
+using Payments.Core.Persistence;
 using Npgsql;
 using Testcontainers.PostgreSql;
 

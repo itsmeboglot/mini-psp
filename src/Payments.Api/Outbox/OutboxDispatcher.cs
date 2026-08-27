@@ -1,7 +1,7 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
-using Payments.Api.Messaging;
-using Payments.Api.Persistence;
+using Payments.Core.Messaging;
+using Payments.Core.Persistence;
 
 namespace Payments.Api.Outbox;
 

@@ -1,4 +1,4 @@
-namespace Payments.Api.Domain;
+namespace Payments.Core.Domain;
 
 /// <summary>
 /// The states a payment can occupy.

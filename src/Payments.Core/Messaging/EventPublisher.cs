@@ -1,8 +1,8 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
-using Payments.Api.Persistence;
+using Payments.Core.Persistence;
 
-namespace Payments.Api.Messaging;
+namespace Payments.Core.Messaging;
 
 /// <summary>
 /// Publishes outbox records to Kafka.

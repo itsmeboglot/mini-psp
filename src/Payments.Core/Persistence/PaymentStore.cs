@@ -1,8 +1,8 @@
 using Dapper;
 using Npgsql;
-using Payments.Api.Domain;
+using Payments.Core.Domain;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Persists payments and the idempotency keys that guard their creation.

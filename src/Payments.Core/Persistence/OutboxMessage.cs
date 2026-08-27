@@ -1,4 +1,4 @@
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// An event waiting to be published, written in the transaction that caused it.

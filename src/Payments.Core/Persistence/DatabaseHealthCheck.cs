@@ -1,7 +1,7 @@
 using Dapper;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Reports the instance unhealthy when PostgreSQL cannot be reached.

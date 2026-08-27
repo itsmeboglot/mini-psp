@@ -1,8 +1,8 @@
 using Dapper;
 using Payments.Api.Endpoints;
-using Payments.Api.Messaging;
+using Payments.Core.Messaging;
 using Payments.Api.Outbox;
-using Payments.Api.Persistence;
+using Payments.Core.Persistence;
 
 // Dapper's handler registry is process wide, so it is configured once here.
 SqlMapper.AddTypeHandler(new DateTimeOffsetHandler());

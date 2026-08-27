@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
-using Payments.Api.Domain;
+using Payments.Core.Domain;
 
 namespace Payments.Api.Tests;
 

@@ -2,7 +2,7 @@ using System.Reflection;
 using Dapper;
 using Npgsql;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Brings the database up to the schema this build expects.
@@ -99,7 +99,11 @@ public sealed class MigrationRunner(DbConnectionFactory db, ILogger<MigrationRun
     private static List<Migration> LoadMigrations()
     {
         var assembly = Assembly.GetExecutingAssembly();
-        const string prefix = "Payments.Api.Migrations.";
+
+        // Derived from the assembly rather than written out: moving these files
+        // to another project silently found nothing, and the only symptom was
+        // every table being missing.
+        var prefix = $"{assembly.GetName().Name}.Migrations.";
 
         return assembly.GetManifestResourceNames()
             .Where(name => name.StartsWith(prefix, StringComparison.Ordinal)

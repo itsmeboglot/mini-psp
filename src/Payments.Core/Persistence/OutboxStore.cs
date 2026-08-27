@@ -1,6 +1,6 @@
 using Dapper;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>One event waiting to be published.</summary>
 public sealed record OutboxRecord(long Id, Guid AggregateId, string EventType, string Payload, int Attempts);

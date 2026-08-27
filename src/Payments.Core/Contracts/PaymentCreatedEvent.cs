@@ -1,4 +1,4 @@
-namespace Payments.Api.Contracts;
+namespace Payments.Core.Contracts;
 
 /// <summary>
 /// Announces that a payment now exists. Published to other services once the

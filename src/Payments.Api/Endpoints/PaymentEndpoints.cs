@@ -3,9 +3,9 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using Payments.Api.Contracts;
-using Payments.Api.Domain;
-using Payments.Api.Persistence;
+using Payments.Core.Contracts;
+using Payments.Core.Domain;
+using Payments.Core.Persistence;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Payments.Api.Endpoints;

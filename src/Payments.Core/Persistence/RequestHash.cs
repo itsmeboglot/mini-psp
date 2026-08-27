@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using Payments.Api.Contracts;
+using Payments.Core.Contracts;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Fingerprints the meaningful content of a create request so that the same

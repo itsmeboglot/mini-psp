@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Hands out connections from Npgsql's pool. The data source is a singleton;

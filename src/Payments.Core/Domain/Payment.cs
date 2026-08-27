@@ -1,4 +1,4 @@
-namespace Payments.Api.Domain;
+namespace Payments.Core.Domain;
 
 public sealed record Payment(
     Guid Id,

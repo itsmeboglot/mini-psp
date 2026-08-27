@@ -7,15 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Confluent.Kafka" Version="2.15.0" />
-    <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.19" />
-    <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Embedded so the image carries exactly the migrations it was built with. -->
-    <EmbeddedResource Include="Migrations\*.sql" />
+    <ProjectReference Include="..\Payments.Core\Payments.Core.csproj" />
   </ItemGroup>
 
 </Project>

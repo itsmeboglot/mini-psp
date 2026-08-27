@@ -1,6 +1,6 @@
-using Payments.Api.Domain;
+using Payments.Core.Domain;
 
-namespace Payments.Api.Contracts;
+namespace Payments.Core.Contracts;
 
 /// <param name="MerchantId">The merchant the payment belongs to.</param>
 /// <param name="AmountMinor">

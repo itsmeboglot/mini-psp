@@ -1,4 +1,4 @@
-namespace Payments.Api.Domain;
+namespace Payments.Core.Domain;
 
 /// <summary>
 /// Thrown when a state change is not permitted by <see cref="PaymentTransitions"/>.

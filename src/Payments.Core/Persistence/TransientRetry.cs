@@ -1,6 +1,6 @@
 using Npgsql;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Retries a database operation that failed for a reason likely to pass.

@@ -1,4 +1,4 @@
-namespace Payments.Api.Messaging;
+namespace Payments.Core.Messaging;
 
 public sealed class KafkaOptions
 {

@@ -1,7 +1,7 @@
 using System.Data;
 using Dapper;
 
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>
 /// Bridges PostgreSQL's timestamptz and <see cref="DateTimeOffset"/>.

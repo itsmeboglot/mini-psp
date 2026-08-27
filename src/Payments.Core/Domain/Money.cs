@@ -1,4 +1,4 @@
-namespace Payments.Api.Domain;
+namespace Payments.Core.Domain;
 
 /// <summary>
 /// An amount as an integer count of the currency's minor unit, never a floating

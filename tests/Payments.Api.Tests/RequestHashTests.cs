@@ -1,6 +1,6 @@
 using System.Reflection;
-using Payments.Api.Contracts;
-using Payments.Api.Persistence;
+using Payments.Core.Contracts;
+using Payments.Core.Persistence;
 
 namespace Payments.Api.Tests;
 

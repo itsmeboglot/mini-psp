@@ -1,4 +1,4 @@
-namespace Payments.Api.Persistence;
+namespace Payments.Core.Persistence;
 
 /// <summary>An HTTP response as it was stored against an idempotency key.</summary>
 /// <remarks>

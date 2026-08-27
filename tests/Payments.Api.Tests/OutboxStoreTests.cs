@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging.Abstractions;
-using Payments.Api.Persistence;
+using Payments.Core.Persistence;
 
 namespace Payments.Api.Tests;
 
