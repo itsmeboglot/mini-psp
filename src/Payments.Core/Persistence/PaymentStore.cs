@@ -44,6 +44,12 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         WHERE merchant_id = @MerchantId AND idempotency_key = @Key;
         """;
 
+    private const string ApplyTransition = """
+        UPDATE payments
+        SET status = @Status, version = @Version, updated_at = now()
+        WHERE id = @Id AND version = @ExpectedVersion;
+        """;
+
     private const string SelectPayment = """
         SELECT id AS Id, merchant_id AS MerchantId, status AS Status, amount_minor AS AmountMinor,
                currency AS Currency, version AS Version, created_at AS CreatedAt
@@ -165,6 +171,59 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
 
         return row?.ToDomain();
     }
+
+    /// <summary>
+    /// Reads a payment inside a caller's transaction.
+    /// </summary>
+    public async Task<Payment?> GetAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Guid id, CancellationToken ct)
+    {
+        var row = await connection.QuerySingleOrDefaultAsync<PaymentRow>(
+            new CommandDefinition(SelectPayment, new { Id = id }, transaction, cancellationToken: ct));
+
+        return row?.ToDomain();
+    }
+
+    /// <summary>
+    /// Writes a transitioned payment back, refusing if someone else moved it first.
+    /// </summary>
+    /// <remarks>
+    /// Optimistic concurrency: the update asserts the version it read, so two
+    /// writers racing to move the same payment cannot both win. The loser is told
+    /// so rather than silently overwriting a state it never saw. No row was
+    /// locked while the caller was deciding, which is the point — locks held
+    /// across domain logic are how a payment platform deadlocks itself.
+    /// </remarks>
+    public async Task<bool> TryApplyTransitionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Payment transitioned,
+        int expectedVersion,
+        CancellationToken ct)
+    {
+        var updated = await connection.ExecuteAsync(new CommandDefinition(ApplyTransition, new
+        {
+            transitioned.Id,
+            Status = PaymentStatuses.ToWire(transitioned.Status),
+            transitioned.Version,
+            ExpectedVersion = expectedVersion
+        }, transaction, cancellationToken: ct));
+
+        return updated == 1;
+    }
+
+    /// <summary>
+    /// Queues an event inside a caller's transaction, so it commits with whatever
+    /// change produced it.
+    /// </summary>
+    public Task AppendToOutboxAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, OutboxMessage message, CancellationToken ct)
+        => connection.ExecuteAsync(new CommandDefinition(InsertOutboxMessage, new
+        {
+            message.AggregateId,
+            message.EventType,
+            message.Payload
+        }, transaction, cancellationToken: ct));
 
     /// <summary>
     /// Works out which kind of duplicate this was, once the index has rejected it.

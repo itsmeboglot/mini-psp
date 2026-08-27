@@ -3,6 +3,7 @@ WORKDIR /src
 
 # Restore first, against the project file alone, so that a source-only change
 # does not invalidate the restore layer.
+COPY src/Payments.Core/Payments.Core.csproj src/Payments.Core/
 COPY src/Payments.Api/Payments.Api.csproj src/Payments.Api/
 RUN dotnet restore src/Payments.Api/Payments.Api.csproj
 

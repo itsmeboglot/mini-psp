@@ -74,5 +74,22 @@ services:
     # convenience. /health is still served, and an orchestrator probes it over
     # HTTP from outside, which needs nothing installed in the image.
 
+  worker:
+    build:
+      context: .
+      dockerfile: src/Payments.Worker/Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Payments: "Host=postgres;Port=5432;Database=minipsp;Username=minipsp;Password=minipsp"
+      Kafka__BootstrapServers: "redpanda:29092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    # The API owns migrations, so the worker can start against a schema that is
+    # not there yet. Restarting until it is beats coordinating startup order.
+    restart: unless-stopped
+
 volumes:
   pgdata:

@@ -20,3 +20,22 @@ public sealed record PaymentCreatedEvent(
 {
     public const string EventType = "payment.created.v1";
 }
+
+/// <summary>
+/// Announces that a payment has been handed on for processing.
+/// </summary>
+/// <remarks>
+/// Shares the shape of <see cref="PaymentCreatedEvent"/> because consumers of
+/// either want the same facts. They stay separate types so that adding a field
+/// one of them needs does not silently change the other.
+/// </remarks>
+public sealed record PaymentPendingEvent(
+    Guid PaymentId,
+    Guid MerchantId,
+    long AmountMinor,
+    string Currency,
+    string Status,
+    DateTimeOffset OccurredAt)
+{
+    public const string EventType = "payment.pending.v1";
+}
