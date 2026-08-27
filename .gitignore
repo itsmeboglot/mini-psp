@@ -55,3 +55,23 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+
+# Local overrides
+.env.local
+*.local.json
+
+# Coverage
+coverage*.xml
+*.trx
+
+# OS
+Thumbs.db
+.DS_Store

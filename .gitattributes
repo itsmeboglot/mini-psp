@@ -1,0 +1,7 @@
+# Normalize to LF in the repository; check out native on Windows.
+* text=auto eol=lf
+
+# Files that must keep CRLF for the tooling that reads them.
+*.sln  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
