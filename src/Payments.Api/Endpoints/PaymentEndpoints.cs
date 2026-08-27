@@ -35,6 +35,7 @@ public static class PaymentEndpoints
         [FromHeader(Name = IdempotencyHeader)] string? idempotencyKey,
         PaymentStore store,
         IOptions<JsonOptions> jsonOptions,
+        TimeProvider clock,
         CancellationToken ct)
     {
         if (Validate(request, idempotencyKey, out var amount) is { } failure)
@@ -42,7 +43,7 @@ public static class PaymentEndpoints
             return failure;
         }
 
-        var payment = Payment.Create(request.MerchantId, amount);
+        var payment = Payment.Create(request.MerchantId, amount, clock);
 
         // Rendered here, not in the store: the API owns its representation, and
         // using the framework's own options means a replayed body is byte for
@@ -100,6 +101,15 @@ public static class PaymentEndpoints
         if (request.MerchantId == Guid.Empty)
         {
             return Problem(StatusCodes.Status400BadRequest, "Invalid request", "merchantId is required.");
+        }
+
+        // Money itself permits any sign, because a ledger needs both and a zero
+        // amount authorisation is a real operation. Requiring a positive amount is
+        // a rule about creating a payment, so it lives with the request.
+        if (request.AmountMinor <= 0)
+        {
+            return Problem(StatusCodes.Status400BadRequest, "Invalid request",
+                "amountMinor must be greater than zero.");
         }
 
         return Money.TryCreate(request.AmountMinor, request.Currency, out amount, out var error)

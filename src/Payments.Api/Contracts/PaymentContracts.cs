@@ -31,7 +31,7 @@ public sealed record PaymentResponse(
         payment.Id,
         payment.MerchantId,
         PaymentStatuses.ToWire(payment.Status),
-        payment.AmountMinor,
-        payment.Currency,
+        payment.Amount.MinorUnits,
+        payment.Amount.Currency,
         payment.CreatedAt);
 }

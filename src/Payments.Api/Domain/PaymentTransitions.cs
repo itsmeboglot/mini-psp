@@ -1,55 +1,65 @@
-using System.Collections.Frozen;
-
 namespace Payments.Api.Domain;
 
 /// <summary>
 /// The only state changes a payment may undergo.
 /// </summary>
 /// <remarks>
-/// Kept as data rather than scattered conditionals so that the whole lifecycle
-/// is readable in one place and testable without a database. Anything absent
-/// from this table is illegal by construction.
+/// The whole lifecycle is one switch, so it reads top to bottom and the compiler
+/// checks every status name in it. A status the switch does not mention throws
+/// rather than quietly answering "no": a forgotten case is a bug, and a bug that
+/// returns a plausible answer is worse than one that stops.
 /// </remarks>
 public static class PaymentTransitions
 {
-    private static readonly FrozenDictionary<PaymentStatus, PaymentStatus[]> Allowed =
-        new Dictionary<PaymentStatus, PaymentStatus[]>
-        {
-            [PaymentStatus.Created] = [PaymentStatus.Pending, PaymentStatus.Failed],
+    private static readonly PaymentStatus[] AllStatuses = Enum.GetValues<PaymentStatus>();
 
-            [PaymentStatus.Pending] =
-            [
-                PaymentStatus.Authorized,
-                PaymentStatus.Failed,
-                PaymentStatus.Expired,
-                PaymentStatus.Unknown
-            ],
+    public static bool IsAllowed(PaymentStatus from, PaymentStatus to) => from switch
+    {
+        PaymentStatus.Created =>
+            to is PaymentStatus.Pending or PaymentStatus.Failed,
 
-            [PaymentStatus.Authorized] = [PaymentStatus.Captured, PaymentStatus.Failed],
+        PaymentStatus.Pending =>
+            to is PaymentStatus.Authorized or PaymentStatus.Failed
+               or PaymentStatus.Expired or PaymentStatus.Unknown,
 
-            [PaymentStatus.Captured] = [PaymentStatus.Refunded],
+        PaymentStatus.Authorized =>
+            to is PaymentStatus.Captured or PaymentStatus.Failed,
 
-            // Resolved by a status query or by reconciliation, which can discover
-            // any real outcome the provider reached — including that the money was
-            // taken. What it may never do is decide on its own that the payment
-            // failed, which is why Unknown is not a terminal state.
-            [PaymentStatus.Unknown] =
-            [
-                PaymentStatus.Authorized,
-                PaymentStatus.Captured,
-                PaymentStatus.Failed,
-                PaymentStatus.Expired
-            ],
+        PaymentStatus.Captured =>
+            to is PaymentStatus.Refunded,
 
-            // Terminal.
-            [PaymentStatus.Failed] = [],
-            [PaymentStatus.Expired] = [],
-            [PaymentStatus.Refunded] = []
-        }.ToFrozenDictionary();
+        // Resolved by a status query or by reconciliation, which can discover any
+        // real outcome the provider reached, including that the money was taken.
+        // What it may never do is decide on its own that the payment failed, which
+        // is why Unknown is not terminal.
+        PaymentStatus.Unknown =>
+            to is PaymentStatus.Authorized or PaymentStatus.Captured
+               or PaymentStatus.Failed or PaymentStatus.Expired,
 
-    public static bool IsAllowed(PaymentStatus from, PaymentStatus to)
-        => Allowed.TryGetValue(from, out var targets) && targets.Contains(to);
+        PaymentStatus.Failed or PaymentStatus.Expired or PaymentStatus.Refunded =>
+            false,
 
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(from), from, "Payment status is missing from the transition rules.")
+    };
+
+    /// <summary>
+    /// True when no transition out of <paramref name="status"/> exists.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <see cref="IsAllowed"/> rather than listed separately, so the
+    /// two cannot disagree about which states are final.
+    /// </remarks>
     public static bool IsTerminal(PaymentStatus status)
-        => Allowed.TryGetValue(status, out var targets) && targets.Length == 0;
+    {
+        foreach (var to in AllStatuses)
+        {
+            if (IsAllowed(status, to))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

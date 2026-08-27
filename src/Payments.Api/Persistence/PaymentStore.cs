@@ -78,8 +78,8 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
                 // payments.status rejects. The translation belongs to this layer
                 // anyway, since the stored text is a database contract.
                 Status = PaymentStatuses.ToWire(payment.Status),
-                payment.AmountMinor,
-                payment.Currency,
+                AmountMinor = payment.Amount.MinorUnits,
+                Currency = payment.Amount.Currency,
                 payment.Version,
                 payment.CreatedAt
             }, transaction, cancellationToken: ct));
@@ -152,6 +152,11 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         DateTimeOffset CreatedAt)
     {
         public Payment ToDomain() => new(
-            Id, MerchantId, PaymentStatuses.Parse(Status), AmountMinor, Currency, Version, CreatedAt);
+            Id,
+            MerchantId,
+            PaymentStatuses.Parse(Status),
+            Money.FromStorage(AmountMinor, Currency),
+            Version,
+            CreatedAt);
     }
 }

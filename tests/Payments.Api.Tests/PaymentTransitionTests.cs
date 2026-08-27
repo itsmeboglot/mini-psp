@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Payments.Api.Domain;
 
 namespace Payments.Api.Tests;
@@ -8,12 +9,12 @@ namespace Payments.Api.Tests;
 /// </summary>
 public sealed class PaymentTransitionTests
 {
-    private static Payment NewPayment()
-        => Payment.Create(Guid.NewGuid(), Money("USD", 1000));
+    private static Payment NewPayment(TimeProvider? clock = null)
+        => Payment.Create(Guid.NewGuid(), Amount("USD", 1000), clock ?? TimeProvider.System);
 
-    private static Money Money(string currency, long minor)
+    private static Money Amount(string currency, long minor)
     {
-        Assert.True(Domain.Money.TryCreate(minor, currency, out var money, out _));
+        Assert.True(Money.TryCreate(minor, currency, out var money, out _));
         return money;
     }
 
@@ -24,6 +25,21 @@ public sealed class PaymentTransitionTests
 
         Assert.Equal(PaymentStatus.Created, payment.Status);
         Assert.Equal(1, payment.Version);
+    }
+
+    [Fact]
+    public void A_new_payment_is_stamped_by_the_injected_clock()
+    {
+        var instant = new DateTimeOffset(2026, 3, 14, 15, 9, 26, TimeSpan.Zero);
+        var clock = new FakeTimeProvider(instant);
+
+        var payment = NewPayment(clock);
+
+        Assert.Equal(instant, payment.CreatedAt);
+
+        // The same instant seeds the version 7 id, so an id and its timestamp can
+        // never tell different stories about when the payment was created.
+        Assert.Equal(7, payment.Id.Version);
     }
 
     [Theory]
@@ -45,6 +61,25 @@ public sealed class PaymentTransitionTests
     [InlineData(PaymentStatus.Expired, PaymentStatus.Pending)]       // terminal
     public void Illegal_moves_are_refused(PaymentStatus from, PaymentStatus to)
         => Assert.False(PaymentTransitions.IsAllowed(from, to));
+
+    /// <summary>
+    /// Guards the gap that a table of rules leaves open: add a status to the enum,
+    /// forget the rules, and every query about it would quietly answer "no".
+    /// </summary>
+    [Fact]
+    public void Every_status_has_transition_rules()
+    {
+        foreach (var from in Enum.GetValues<PaymentStatus>())
+        {
+            foreach (var to in Enum.GetValues<PaymentStatus>())
+            {
+                // Throws if `from` is missing from the rules, which is the point.
+                PaymentTransitions.IsAllowed(from, to);
+            }
+
+            PaymentTransitions.IsTerminal(from);
+        }
+    }
 
     [Fact]
     public void An_illegal_transition_throws_and_leaves_the_payment_untouched()
@@ -106,4 +141,25 @@ public sealed class PaymentTransitionTests
             Assert.Equal(status, PaymentStatuses.Parse(PaymentStatuses.ToWire(status)));
         }
     }
+
+    [Fact]
+    public void Money_accepts_any_sign_and_normalises_the_currency()
+    {
+        // Sign is the caller's rule, not money's: a ledger needs both directions
+        // and a zero amount authorisation is a real operation.
+        Assert.True(Money.TryCreate(0, "usd", out var zero, out _));
+        Assert.True(Money.TryCreate(-250, "EUR", out var credit, out _));
+
+        Assert.Equal("USD", zero.Currency);
+        Assert.Equal(-250, credit.MinorUnits);
+    }
+
+    [Theory]
+    [InlineData("US")]
+    [InlineData("US1")]
+    [InlineData("USDD")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Money_refuses_anything_that_is_not_a_three_letter_code(string? currency)
+        => Assert.False(Money.TryCreate(100, currency, out _, out var error));
 }

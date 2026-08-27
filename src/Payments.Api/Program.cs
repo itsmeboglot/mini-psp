@@ -15,6 +15,10 @@ var connectionString = builder.Configuration.GetConnectionString("Payments")
 // that holds a connection pool.
 builder.Services.AddSingleton(_ => new DbConnectionFactory(connectionString));
 builder.Services.AddScoped<PaymentStore>();
+
+// Time is injected rather than read from DateTimeOffset.UtcNow so that expiry and
+// reconciliation behaviour can be tested at chosen instants.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 

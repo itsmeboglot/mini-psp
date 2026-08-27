@@ -1,11 +1,13 @@
-using System.Text.Json.Serialization;
-
 namespace Payments.Api.Domain;
 
 /// <summary>
 /// The states a payment can occupy.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))]
+/// <remarks>
+/// Never serialised directly. Both the database column and the API contract
+/// carry the text produced by <see cref="PaymentStatuses.ToWire"/>, so neither
+/// depends on C# member names or on an enum naming policy.
+/// </remarks>
 public enum PaymentStatus
 {
     Created,
@@ -60,6 +62,6 @@ public static class PaymentStatuses
         "expired" => PaymentStatus.Expired,
         "unknown" => PaymentStatus.Unknown,
         "refunded" => PaymentStatus.Refunded,
-        _ => throw new ArgumentOutOfRangeException(nameof(wire), wire, "Unrecognised payment status in storage.")
+        _ => throw new InvalidDataException($"Unrecognised payment status in storage: '{wire}'.")
     };
 }
