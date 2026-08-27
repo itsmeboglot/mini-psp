@@ -56,7 +56,15 @@ builder.Services.AddScoped<IPaymentProvider>(services => new HttpPaymentProvider
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.Section));
 builder.Services.Configure<ConsumerOptions>(builder.Configuration.GetSection(ConsumerOptions.Section));
 
+builder.Services.Configure<ReconciliationOptions>(
+    builder.Configuration.GetSection(ReconciliationOptions.Section));
+
 builder.Services.AddHostedService<PaymentEventConsumer>();
+
+if (builder.Configuration.GetValue($"{ReconciliationOptions.Section}:Enabled", true))
+{
+    builder.Services.AddHostedService<ReconciliationService>();
+}
 
 // Migrations are the API's job. Running them from two places would mean two
 // things racing to define the same schema, and the advisory lock only makes that

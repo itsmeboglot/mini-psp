@@ -47,7 +47,7 @@ public sealed class HttpPaymentProvider(
             if (response.StatusCode is HttpStatusCode.OK)
             {
                 var body = await response.Content.ReadFromJsonAsync<ChargeResponse>(Json, ct);
-                return Interpret(charge, body);
+                return Interpret(charge.PaymentId, body);
             }
 
             logger.LogWarning(
@@ -70,11 +70,39 @@ public sealed class HttpPaymentProvider(
         }
     }
 
-    private ProviderResult Interpret(ProviderCharge charge, ChargeResponse? body)
+    public async Task<ProviderResult> GetStatusAsync(string idempotencyKey, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await client.GetAsync($"/charges/{Uri.EscapeDataString(idempotencyKey)}", ct);
+
+            if (response.StatusCode is HttpStatusCode.NotFound)
+            {
+                // The provider says it never saw this charge. Believed only after
+                // it has been asked a few times, in case it is simply behind.
+                return new ProviderResult(ProviderVerdict.NotFound, null, "no record");
+            }
+
+            if (response.StatusCode is not HttpStatusCode.OK)
+            {
+                return new ProviderResult(ProviderVerdict.Unknown, null, $"http {(int)response.StatusCode}");
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<ChargeResponse>(Json, ct);
+            return Interpret(idempotencyKey, body);
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(e, "Provider {Provider} would not answer about {Key}", Name, idempotencyKey);
+            return new ProviderResult(ProviderVerdict.Unknown, null, "unreachable");
+        }
+    }
+
+    private ProviderResult Interpret(object context, ChargeResponse? body)
     {
         if (body is null)
         {
-            logger.LogError("Provider {Provider} returned an empty body for {PaymentId}", Name, charge.PaymentId);
+            logger.LogError("Provider {Provider} returned an empty body for {Context}", Name, context);
             return new ProviderResult(ProviderVerdict.Unknown, null, "empty response");
         }
 

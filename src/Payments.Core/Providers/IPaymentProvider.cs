@@ -24,7 +24,16 @@ public enum ProviderVerdict
     /// The provider returned no verdict. It is not a failure: the money may or
     /// may not have moved, and the only honest answer is that we do not know.
     /// </summary>
-    Unknown
+    Unknown,
+
+    /// <summary>
+    /// The provider has no record of this charge at all. Different from
+    /// <see cref="Unknown"/>, which means it would not say: this means it says
+    /// there is nothing to say. Only trustworthy once the provider has had time
+    /// to become consistent, which is why it takes several of these before a
+    /// payment is called failed.
+    /// </summary>
+    NotFound
 }
 
 /// <param name="Reference">
@@ -40,4 +49,14 @@ public interface IPaymentProvider
     string Name { get; }
 
     Task<ProviderResult> ChargeAsync(ProviderCharge charge, CancellationToken ct);
+
+    /// <summary>
+    /// Asks the provider what became of a charge, by the key it was sent under.
+    /// </summary>
+    /// <remarks>
+    /// The way out of <see cref="ProviderVerdict.Unknown"/>. A platform without
+    /// this has no answer for a payment whose outcome it never learned, beyond
+    /// guessing.
+    /// </remarks>
+    Task<ProviderResult> GetStatusAsync(string idempotencyKey, CancellationToken ct);
 }

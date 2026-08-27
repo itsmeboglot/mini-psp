@@ -56,6 +56,36 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         WHERE id = @Id AND version = @ExpectedVersion;
         """;
 
+    /// <remarks>
+    /// Claims and stamps in one statement. The stamp is the claim: a provider
+    /// call cannot happen inside a transaction, so no lock can be held across it,
+    /// and another instance is kept off the row by seeing it was tried recently.
+    /// SKIP LOCKED keeps two instances from claiming the same rows in the instant
+    /// before either has committed its stamp.
+    /// </remarks>
+    private const string ClaimUnresolved = """
+        WITH claimed AS (
+            SELECT id
+            FROM payments
+            WHERE status = 'unknown'
+              AND created_at < now() - make_interval(secs => @GraceSeconds)
+              AND (last_reconciled_at IS NULL
+                   OR last_reconciled_at < now() - make_interval(secs => @RetrySeconds))
+            ORDER BY last_reconciled_at NULLS FIRST, created_at
+            FOR UPDATE SKIP LOCKED
+            LIMIT @BatchSize
+        )
+        UPDATE payments p
+        SET last_reconciled_at = now(),
+            reconciliation_attempts = p.reconciliation_attempts + 1
+        FROM claimed c
+        WHERE p.id = c.id
+        RETURNING p.id AS Id, p.merchant_id AS MerchantId, p.status AS Status,
+                  p.amount_minor AS AmountMinor, p.currency AS Currency,
+                  p.version AS Version, p.created_at AS CreatedAt,
+                  p.reconciliation_attempts AS Attempts;
+        """;
+
     private const string SelectPayment = """
         SELECT id AS Id, merchant_id AS MerchantId, status AS Status, amount_minor AS AmountMinor,
                currency AS Currency, version AS Version, created_at AS CreatedAt
@@ -179,6 +209,25 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
     }
 
     /// <summary>
+    /// Takes a batch of payments whose outcome was never learned, marking them as
+    /// being looked into.
+    /// </summary>
+    public async Task<IReadOnlyList<UnresolvedPayment>> ClaimUnresolvedAsync(
+        int batchSize, TimeSpan grace, TimeSpan retryAfter, CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+
+        var rows = await connection.QueryAsync<UnresolvedRow>(new CommandDefinition(ClaimUnresolved, new
+        {
+            BatchSize = batchSize,
+            GraceSeconds = grace.TotalSeconds,
+            RetrySeconds = retryAfter.TotalSeconds
+        }, cancellationToken: ct));
+
+        return rows.Select(row => new UnresolvedPayment(row.ToDomain(), row.Attempts)).ToList();
+    }
+
+    /// <summary>
     /// Reads a payment inside a caller's transaction.
     /// </summary>
     public async Task<Payment?> GetAsync(
@@ -268,6 +317,15 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
     }
 
     private sealed record StoredRow(string RequestHash, int StatusCode, string Body);
+
+    private sealed record UnresolvedRow(
+        Guid Id, Guid MerchantId, string Status, long AmountMinor, string Currency,
+        int Version, DateTimeOffset CreatedAt, int Attempts)
+    {
+        public Payment ToDomain() => new(
+            Id, MerchantId, PaymentStatuses.Parse(Status),
+            Money.FromStorage(AmountMinor, Currency), Version, CreatedAt);
+    }
 
     /// <summary>A payments row exactly as the database shapes it.</summary>
     private sealed record PaymentRow(
