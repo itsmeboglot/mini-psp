@@ -33,6 +33,11 @@ clearer and faster as explicit SQL.
 * **Card data.** Nothing in this system touches a PAN, which keeps it entirely
   outside PCI DSS scope. Provider connectors exchange tokens.
 * **Authentication and merchant management.** A merchant is an id in a request.
+  One consequence is worth naming rather than leaving implied: `GET
+  /v1/payments/{id}` is not scoped to a merchant, so any caller who knows or
+  guesses an id can read any payment. Adding a merchant to the WHERE clause
+  without an authenticated caller to compare it against would be theatre, so the
+  gap stays until there is an identity to enforce.
 * **Real provider integrations.** Two fake connectors stand in, configured to
   fail in the specific ways real ones do: timeouts, 5xx, duplicate callbacks,
   callbacks that arrive before the originating response.

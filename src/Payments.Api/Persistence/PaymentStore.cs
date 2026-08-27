@@ -57,7 +57,18 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
     /// rejected by the index. Neither can produce a second payment.
     /// See docs/adr/0003-idempotency-in-postgres.md
     /// </remarks>
-    public async Task<CreateOutcome> CreateAsync(
+    public Task<CreateOutcome> CreateAsync(
+        Payment payment,
+        string idempotencyKey,
+        string requestHash,
+        StoredResponse response,
+        CancellationToken ct)
+        => TransientRetry.RunAsync(
+            token => AttemptCreateAsync(payment, idempotencyKey, requestHash, response, token),
+            logger,
+            ct);
+
+    private async Task<CreateOutcome> AttemptCreateAsync(
         Payment payment,
         string idempotencyKey,
         string requestHash,
@@ -95,6 +106,11 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
             }, transaction, cancellationToken: ct));
 
             await transaction.CommitAsync(ct);
+
+            logger.LogInformation(
+                "Created payment {PaymentId} for merchant {MerchantId}: {AmountMinor} {Currency}",
+                payment.Id, payment.MerchantId, payment.Amount.MinorUnits, payment.Amount.Currency);
+
             return new CreateOutcome.Created();
         }
         catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation
@@ -112,7 +128,18 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         }
     }
 
-    public async Task<Payment?> GetAsync(Guid id, CancellationToken ct)
+    /// <summary>Fetches a payment by id.</summary>
+    /// <remarks>
+    /// Not scoped to a merchant, because there is no authentication yet to scope
+    /// it by. That means any caller who knows or guesses an id can read any
+    /// payment. It is a deliberate gap, recorded in docs/CONTEXT.md, and the fix
+    /// is one signature change — GetAsync(merchantId, id) with the merchant added
+    /// to the WHERE clause — the moment a caller identity exists.
+    /// </remarks>
+    public Task<Payment?> GetAsync(Guid id, CancellationToken ct)
+        => TransientRetry.RunAsync(token => AttemptGetAsync(id, token), logger, ct);
+
+    private async Task<Payment?> AttemptGetAsync(Guid id, CancellationToken ct)
     {
         await using var connection = await db.OpenAsync(ct);
         var row = await connection.QuerySingleOrDefaultAsync<PaymentRow>(
@@ -137,8 +164,12 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
 
         if (stored is null)
         {
-            logger.LogInformation(
-                "Idempotency key {Key} for merchant {MerchantId} is held by an uncommitted request",
+            // Rare by design: a losing writer waits for the winner to commit, so
+            // the row is normally visible by the time the violation surfaces.
+            // Getting here suggests a retention delete or a lagging replica.
+            logger.LogWarning(
+                "Idempotency key {Key} for merchant {MerchantId} produced a unique violation "
+                + "but no stored response was found",
                 idempotencyKey, merchantId);
 
             return new CreateOutcome.InFlight();

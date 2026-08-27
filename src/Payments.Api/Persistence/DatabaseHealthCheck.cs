@@ -25,7 +25,9 @@ public sealed class DatabaseHealthCheck(DbConnectionFactory db) : IHealthCheck
 
             return HealthCheckResult.Healthy();
         }
-        catch (Exception e)
+        // Cancellation is not ill health: during a graceful shutdown the host
+        // cancels its probes, and reporting a failure there would be noise.
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             return HealthCheckResult.Unhealthy("PostgreSQL is not reachable.", e);
         }
