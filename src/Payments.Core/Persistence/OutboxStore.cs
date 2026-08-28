@@ -32,10 +32,12 @@ public sealed record DispatchResult(DispatchOutcome Outcome, int Published, int 
 /// dispatcher republishing the same events. Batches are small and the publish
 /// timeout is short to keep the window bounded.
 ///
-/// SKIP LOCKED lets several dispatchers share the table without blocking each
-/// other, but it also means they can interleave, so ordering per payment only
-/// holds while a single instance runs. Scaling out would need the claim
-/// partitioned by aggregate.
+/// SKIP LOCKED alone would let several dispatchers interleave, which loses
+/// ordering per payment: one instance could take a payment's second event while
+/// another still holds its first, and publish it first. So the claim is
+/// partitioned by a hash of the aggregate instead. Every event about a payment
+/// falls to exactly one instance, which publishes them in id order, and the
+/// instances never contend for the same rows.
 /// </remarks>
 public sealed class OutboxStore(DbConnectionFactory db, ILogger<OutboxStore> logger)
 {
@@ -45,6 +47,9 @@ public sealed class OutboxStore(DbConnectionFactory db, ILogger<OutboxStore> log
                correlation_id AS CorrelationId
         FROM outbox
         WHERE published_at IS NULL AND dead_at IS NULL
+          -- One instance owns an aggregate entirely. hashtext is cast to bigint
+          -- first because it can return int.MinValue, which abs() cannot negate.
+          AND mod(abs(hashtext(aggregate_id::text)::bigint), @PartitionCount) = @PartitionIndex
         ORDER BY id
         FOR UPDATE SKIP LOCKED
         LIMIT @BatchSize;
@@ -67,13 +72,20 @@ public sealed class OutboxStore(DbConnectionFactory db, ILogger<OutboxStore> log
         Func<Exception, bool> isBrokerUnavailable,
         int batchSize,
         int maxAttempts,
-        CancellationToken ct)
+        CancellationToken ct,
+        int partitionIndex = 0,
+        int partitionCount = 1)
     {
         await using var connection = await db.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         var claimed = (await connection.QueryAsync<OutboxRecord>(
-            new CommandDefinition(ClaimPending, new { BatchSize = batchSize }, transaction, cancellationToken: ct)))
+            new CommandDefinition(ClaimPending, new
+            {
+                BatchSize = batchSize,
+                PartitionIndex = partitionIndex,
+                PartitionCount = partitionCount
+            }, transaction, cancellationToken: ct)))
             .AsList();
 
         if (claimed.Count == 0)

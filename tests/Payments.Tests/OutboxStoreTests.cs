@@ -1,6 +1,8 @@
+using Dapper;
 using System.Net.Http.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using Payments.Core.Persistence;
 
 namespace Payments.Tests;
@@ -120,6 +122,103 @@ public sealed class OutboxStoreTests(PaymentsApiFixture fixture) : IClassFixture
             (_, _) => Task.CompletedTask, IsBrokerDown, 100, MaxAttempts, CancellationToken.None);
 
         Assert.Equal(DispatchOutcome.Idle, second.Outcome);
+    }
+
+    /// <summary>
+    /// Two dispatchers between them take everything, and never the same row.
+    /// </summary>
+    [Fact]
+    public async Task Partitions_together_cover_everything_and_never_overlap()
+    {
+        for (var payment = 0; payment < 12; payment++)
+        {
+            await CreatePaymentAsync();
+        }
+
+        var store = Store();
+        var byPartition = new List<long>[2];
+
+        for (var partition = 0; partition < 2; partition++)
+        {
+            var claimed = new List<long>();
+
+            // Until this partition is empty, so the comparison is about which rows
+            // each one owns rather than how big a batch happened to be.
+            while (true)
+            {
+                var result = await store.DispatchBatchAsync(
+                    (record, _) => { claimed.Add(record.Id); return Task.CompletedTask; },
+                    IsBrokerDown, 100, MaxAttempts, CancellationToken.None,
+                    partitionIndex: partition, partitionCount: 2);
+
+                if (result.Outcome == DispatchOutcome.Idle) break;
+            }
+
+            byPartition[partition] = claimed;
+        }
+
+        Assert.NotEmpty(byPartition[0]);
+        Assert.NotEmpty(byPartition[1]);
+        Assert.Empty(byPartition[0].Intersect(byPartition[1]));
+
+        // Nothing left behind by either.
+        var leftover = await store.DispatchBatchAsync(
+            (_, _) => Task.CompletedTask, IsBrokerDown, 100, MaxAttempts, CancellationToken.None);
+
+        Assert.Equal(DispatchOutcome.Idle, leftover.Outcome);
+    }
+
+    /// <summary>
+    /// Ordering per payment is the reason partitioning exists, so every event
+    /// about one payment has to land in the same partition.
+    /// </summary>
+    [Fact]
+    public async Task Every_event_about_one_payment_falls_to_one_partition()
+    {
+        var merchantId = await CreatePaymentAsync();
+        var aggregateId = await AggregateOfAsync(merchantId);
+
+        await AppendEventsAsync(aggregateId, 4);
+
+        var store = Store();
+        var partitionsSeen = new HashSet<int>();
+
+        for (var partition = 0; partition < 3; partition++)
+        {
+            var index = partition;
+
+            await store.DispatchBatchAsync(
+                (record, _) =>
+                {
+                    if (record.AggregateId == aggregateId) partitionsSeen.Add(index);
+                    return Task.CompletedTask;
+                },
+                IsBrokerDown, 100, MaxAttempts, CancellationToken.None,
+                partitionIndex: partition, partitionCount: 3);
+        }
+
+        Assert.Single(partitionsSeen);
+    }
+
+    private async Task<Guid> AggregateOfAsync(Guid merchantId)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        return await connection.ExecuteScalarAsync<Guid>(
+            "SELECT id FROM payments WHERE merchant_id = @merchantId", new { merchantId });
+    }
+
+    private async Task AppendEventsAsync(Guid aggregateId, int count)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+
+        for (var i = 0; i < count; i++)
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO outbox (aggregate_id, event_type, payload)
+                VALUES (@aggregateId, 'test.event.v1', '{}'::jsonb)
+                """, new { aggregateId });
+        }
     }
 
     /// <summary>Creates one payment and returns its merchant, so its event can be found.</summary>

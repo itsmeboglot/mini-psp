@@ -19,6 +19,15 @@ public sealed class OutboxOptions
 
     public int BatchSize { get; set; } = 100;
 
+    /// <summary>
+    /// Which slice of the outbox this instance owns, and how many slices there
+    /// are. Every event about one payment hashes to the same slice, so ordering
+    /// per payment survives running several dispatchers.
+    /// </summary>
+    public int PartitionIndex { get; set; }
+
+    public int PartitionCount { get; set; } = 1;
+
     /// <summary>How long to wait when there was nothing to send.</summary>
     public int PollIntervalMs { get; set; } = 500;
 
@@ -49,7 +58,16 @@ public sealed class OutboxDispatcher(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Outbox dispatcher started, batch size {BatchSize}", _options.BatchSize);
+        logger.LogInformation(
+            "Outbox dispatcher started, batch size {BatchSize}, partition {Index} of {Count}",
+            _options.BatchSize, _options.PartitionIndex, _options.PartitionCount);
+
+        if (_options.PartitionIndex >= _options.PartitionCount)
+        {
+            // Would claim nothing, forever, silently. Better to refuse to start.
+            throw new InvalidOperationException(
+                $"Outbox partition index {_options.PartitionIndex} is outside a count of {_options.PartitionCount}.");
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -84,7 +102,8 @@ public sealed class OutboxDispatcher(
         var store = scope.ServiceProvider.GetRequiredService<OutboxStore>();
 
         var result = await store.DispatchBatchAsync(
-            publisher.PublishAsync, IsBrokerUnavailable, _options.BatchSize, _options.MaxAttempts, ct);
+            publisher.PublishAsync, IsBrokerUnavailable, _options.BatchSize, _options.MaxAttempts, ct,
+            _options.PartitionIndex, _options.PartitionCount);
 
         if (result.Published > 0)
         {
