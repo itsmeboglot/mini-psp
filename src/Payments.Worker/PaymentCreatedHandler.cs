@@ -21,6 +21,7 @@ public sealed class PaymentCreatedHandler(PaymentStore payments, ILogger<Payment
 
     public async Task<bool> HandleAsync(
         string payload,
+        string? correlationId,
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CancellationToken ct)
@@ -61,6 +62,7 @@ public sealed class PaymentCreatedHandler(PaymentStore payments, ILogger<Payment
         await payments.AppendToOutboxAsync(connection, transaction, new OutboxMessage(
             AggregateId: pending.Id,
             EventType: PaymentPendingEvent.EventType,
+            CorrelationId: correlationId,
             Payload: JsonSerializer.Serialize(new PaymentPendingEvent(
                 pending.Id,
                 pending.MerchantId,

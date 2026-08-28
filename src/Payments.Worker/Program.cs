@@ -7,6 +7,10 @@ using Payments.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Same format as the API, and scopes included, so the correlation id a message
+// carries is a searchable field on every line the worker writes about it.
+builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+
 var connectionString = builder.Configuration.GetConnectionString("Payments")
     ?? throw new InvalidOperationException("ConnectionStrings:Payments is not configured.");
 

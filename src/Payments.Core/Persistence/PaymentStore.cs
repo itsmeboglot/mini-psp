@@ -34,8 +34,8 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         """;
 
     private const string InsertOutboxMessage = """
-        INSERT INTO outbox (aggregate_id, event_type, payload)
-        VALUES (@AggregateId, @EventType, @Payload::jsonb);
+        INSERT INTO outbox (aggregate_id, event_type, payload, correlation_id)
+        VALUES (@AggregateId, @EventType, @Payload::jsonb, @CorrelationId);
         """;
 
     private const string SelectStored = """
@@ -162,7 +162,8 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
             {
                 message.AggregateId,
                 message.EventType,
-                message.Payload
+                message.Payload,
+                message.CorrelationId
             }, transaction, cancellationToken: ct));
 
             await transaction.CommitAsync(ct);
@@ -281,7 +282,8 @@ public sealed class PaymentStore(DbConnectionFactory db, ILogger<PaymentStore> l
         {
             message.AggregateId,
             message.EventType,
-            message.Payload
+            message.Payload,
+            message.CorrelationId
         }, transaction, cancellationToken: ct));
 
     /// <summary>

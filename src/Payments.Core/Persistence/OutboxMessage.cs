@@ -13,4 +13,9 @@ namespace Payments.Core.Persistence;
 /// The entity the event is about. Becomes the Kafka partition key, so events for
 /// one payment stay ordered relative to each other.
 /// </param>
-public sealed record OutboxMessage(Guid AggregateId, string EventType, string Payload);
+/// <param name="CorrelationId">
+/// Written with the event so that whatever consumes it minutes later can log
+/// under the same id as the request that caused it.
+/// </param>
+public sealed record OutboxMessage(
+    Guid AggregateId, string EventType, string Payload, string? CorrelationId = null);

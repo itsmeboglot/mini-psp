@@ -153,7 +153,7 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
         var row = await ReadOutboxForMerchantAsync(merchantId);
 
         await processor.ProcessAsync("test", row.Id,
-            (connection, transaction, ct) => handler.HandleAsync(row.Payload, connection, transaction, ct),
+            (connection, transaction, ct) => handler.HandleAsync(row.Payload, "test-correlation", connection, transaction, ct),
             CancellationToken.None);
 
         await using var connection = new NpgsqlConnection(ConnectionString);

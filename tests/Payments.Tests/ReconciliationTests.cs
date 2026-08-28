@@ -164,7 +164,7 @@ public sealed class ReconciliationTests(PaymentsApiFixture fixture) : IClassFixt
                 store, db,
                 new StubProvider(new ProviderResult(ProviderVerdict.Unknown, null, "timeout")),
                 NullLogger<PaymentPendingHandler>.Instance)
-            .HandleAsync(fixture.PendingEventPayload(pending), CancellationToken.None);
+            .HandleAsync(fixture.PendingEventPayload(pending), "test-correlation", CancellationToken.None);
 
         Assert.Equal("unknown", (await fixture.ReadPaymentAsync(pending.Id)).Status);
         return pending;

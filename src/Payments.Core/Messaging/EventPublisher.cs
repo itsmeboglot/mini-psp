@@ -1,5 +1,6 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 
 namespace Payments.Core.Messaging;
@@ -55,7 +56,9 @@ public sealed class EventPublisher : IAsyncDisposable
             Headers =
             [
                 new Header("event-type", System.Text.Encoding.UTF8.GetBytes(record.EventType)),
-                new Header("outbox-id", System.Text.Encoding.UTF8.GetBytes(record.Id.ToString()))
+                new Header("outbox-id", System.Text.Encoding.UTF8.GetBytes(record.Id.ToString())),
+                new Header(CorrelationId.MessageHeader,
+                    System.Text.Encoding.UTF8.GetBytes(record.CorrelationId ?? ""))
             ]
         };
 

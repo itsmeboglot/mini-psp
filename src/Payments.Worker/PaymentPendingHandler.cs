@@ -25,7 +25,7 @@ public sealed class PaymentPendingHandler(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task HandleAsync(string payload, CancellationToken ct)
+    public async Task HandleAsync(string payload, string? correlationId, CancellationToken ct)
     {
         var @event = JsonSerializer.Deserialize<PaymentPendingEvent>(payload, Json)
             ?? throw new InvalidDataException("payment.pending.v1 payload was empty.");
@@ -61,7 +61,7 @@ public sealed class PaymentPendingHandler(
             _ => PaymentStatus.Unknown
         };
 
-        await RecordAsync(payment, next, result, ct);
+        await RecordAsync(payment, next, result, correlationId, ct);
 
         logger.LogInformation(
             "Payment {PaymentId} is {Status} after {Provider} said {Verdict}{Reason}",
@@ -70,7 +70,7 @@ public sealed class PaymentPendingHandler(
     }
 
     private async Task RecordAsync(
-        Payment payment, PaymentStatus next, ProviderResult result, CancellationToken ct)
+        Payment payment, PaymentStatus next, ProviderResult result, string? correlationId, CancellationToken ct)
     {
         var transitioned = payment.TransitionTo(next);
 
@@ -91,6 +91,7 @@ public sealed class PaymentPendingHandler(
         await payments.AppendToOutboxAsync(connection, transaction, new OutboxMessage(
             AggregateId: transitioned.Id,
             EventType: PaymentResolvedEvent.EventType,
+            CorrelationId: correlationId,
             Payload: JsonSerializer.Serialize(new PaymentResolvedEvent(
                 transitioned.Id,
                 transitioned.MerchantId,

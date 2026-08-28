@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Options;
 using Payments.Core.Contracts;
 using Payments.Core.Messaging;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 
 namespace Payments.Worker;
@@ -89,6 +90,14 @@ public sealed class PaymentEventConsumer(
     {
         var eventType = Header(result.Message, "event-type");
         var eventId = long.TryParse(Header(result.Message, "outbox-id"), out var id) ? id : 0;
+        var correlationId = Header(result.Message, CorrelationId.MessageHeader);
+
+        // Reopened here, so work done minutes after the request that caused it
+        // still logs under the same id.
+        using var scope = logger.BeginScope(new Dictionary<string, object>
+        {
+            [CorrelationId.LogProperty] = string.IsNullOrEmpty(correlationId) ? "(none)" : correlationId
+        });
 
         if (eventId == 0)
         {
@@ -100,7 +109,7 @@ public sealed class PaymentEventConsumer(
         {
             try
             {
-                await DispatchAsync(eventType, eventId, result.Message.Value, ct);
+                await DispatchAsync(eventType, eventId, result.Message.Value, correlationId, ct);
                 return;
             }
             catch (Exception e) when (attempt < _consumer.MaxAttempts && e is not OperationCanceledException)
@@ -121,11 +130,13 @@ public sealed class PaymentEventConsumer(
         }
     }
 
-    private async Task DispatchAsync(string? eventType, long eventId, string payload, CancellationToken ct)
+    private async Task DispatchAsync(
+        string? eventType, long eventId, string payload, string? correlationId, CancellationToken ct)
     {
         // One scope per message: fresh handlers and a fresh connection, released
         // as soon as the message is done with.
-        using var scope = scopes.CreateScope();
+        using var messageScope = scopes.CreateScope();
+        var scope = messageScope;
 
         switch (eventType)
         {
@@ -137,7 +148,8 @@ public sealed class PaymentEventConsumer(
                 var outcome = await processor.ProcessAsync(
                     _consumer.Name,
                     eventId,
-                    (connection, transaction, token) => handler.HandleAsync(payload, connection, transaction, token),
+                    (connection, transaction, token) =>
+                        handler.HandleAsync(payload, correlationId, connection, transaction, token),
                     ct);
 
                 logger.LogDebug("Event {EventId}: {Outcome}", eventId, outcome);
@@ -152,7 +164,8 @@ public sealed class PaymentEventConsumer(
                 // safe by two other things instead: the handler only acts on a
                 // payment still in pending, and the charge carries an idempotency
                 // key the provider recognises.
-                await scope.ServiceProvider.GetRequiredService<PaymentPendingHandler>().HandleAsync(payload, ct);
+                await scope.ServiceProvider.GetRequiredService<PaymentPendingHandler>()
+                    .HandleAsync(payload, correlationId, ct);
                 return;
             }
 

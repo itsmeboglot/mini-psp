@@ -3,7 +3,8 @@ using Dapper;
 namespace Payments.Core.Persistence;
 
 /// <summary>One event waiting to be published.</summary>
-public sealed record OutboxRecord(long Id, Guid AggregateId, string EventType, string Payload, int Attempts);
+public sealed record OutboxRecord(
+    long Id, Guid AggregateId, string EventType, string Payload, int Attempts, string? CorrelationId);
 
 /// <summary>The reason a batch stopped.</summary>
 public enum DispatchOutcome
@@ -40,7 +41,8 @@ public sealed class OutboxStore(DbConnectionFactory db, ILogger<OutboxStore> log
 {
     private const string ClaimPending = """
         SELECT id AS Id, aggregate_id AS AggregateId, event_type AS EventType,
-               payload::text AS Payload, attempts AS Attempts
+               payload::text AS Payload, attempts AS Attempts,
+               correlation_id AS CorrelationId
         FROM outbox
         WHERE published_at IS NULL AND dead_at IS NULL
         ORDER BY id

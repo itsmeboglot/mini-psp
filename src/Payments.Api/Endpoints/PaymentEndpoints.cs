@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Payments.Core.Contracts;
 using Payments.Core.Domain;
+using Payments.Api.Observability;
 using Payments.Core.Caching;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 using Payments.Core.RateLimiting;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
@@ -48,6 +50,8 @@ public static class PaymentEndpoints
         TokenBucketLimiter limiter,
         IOptions<RateLimitOptions> rateLimit,
         IOptions<JsonOptions> jsonOptions,
+        PaymentMetrics metrics,
+        HttpContext context,
         TimeProvider clock,
         CancellationToken ct)
     {
@@ -94,6 +98,7 @@ public static class PaymentEndpoints
         var message = new OutboxMessage(
             AggregateId: payment.Id,
             EventType: PaymentCreatedEvent.EventType,
+            CorrelationId: context.CorrelationId(),
             Payload: JsonSerializer.Serialize(
                 new PaymentCreatedEvent(
                     payment.Id,
@@ -112,6 +117,7 @@ public static class PaymentEndpoints
             // Only now, and only after the commit. Caching before it would let a
             // rolled back payment be replayed as though it existed.
             await cache.SetAsync(request.MerchantId, idempotencyKey!, requestHash, response);
+            metrics.PaymentCreated();
         }
 
         return outcome switch

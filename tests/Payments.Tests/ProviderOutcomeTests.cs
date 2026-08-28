@@ -102,7 +102,7 @@ public sealed class ProviderOutcomeTests(PaymentsApiFixture fixture) : IClassFix
         var handler = new PaymentPendingHandler(
             store, db, provider, NullLogger<PaymentPendingHandler>.Instance);
 
-        await handler.HandleAsync(fixture.PendingEventPayload(payment), CancellationToken.None);
+        await handler.HandleAsync(fixture.PendingEventPayload(payment), "test-correlation", CancellationToken.None);
     }
 
     /// <summary>Creates a payment and moves it to pending, the way the worker does.</summary>
