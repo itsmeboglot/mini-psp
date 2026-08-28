@@ -16,35 +16,39 @@ This README describes what exists. Anything still to come is under
 ## What runs today
 
 ```
-            POST /v1/payments
-        (Idempotency-Key header)
-                   |
-                   v
-        +----------------------+
-        |    Payments.Api      |   minimal API, OpenAPI
-        +----------------------+
-                   |
-                   |  one transaction:
-                   |    payment row + idempotency row + outbox event
-                   v
-        +----------------------+
-        |      PostgreSQL      |
-        |  payments            |
-        |  idempotency_keys    |
-        |  outbox              |
-        +----------------------+
-                   |
-                   |  nothing drains this yet
-                   v
-              (dispatcher)
+  POST /v1/payments                      rate limited per merchant (Redis, Lua)
+  (Idempotency-Key)                      replayed answers cached (Redis)
+         |
+         v
+  +---------------+   one transaction: payment + idempotency key + event
+  |  Payments.Api |-------------------------------+
+  +---------------+                               |
+         | dispatcher                             v
+         |                              +---------------------+
+         +----------------------------->|     PostgreSQL      |
+                    Kafka               |  payments           |
+                      |                 |  idempotency_keys   |
+                      v                 |  outbox             |
+              +----------------+        |  processed_events   |
+              | Payments.Worker|<------>|  ledger_*           |
+              +----------------+        +---------------------+
+                | charge          reconciliation sweep
+                v
+        +-----------------+
+        | payment provider|   times out, 500s after charging, declines
+        +-----------------+
 ```
 
-Two endpoints:
+A payment is created, handed to a provider, resolved into authorized, failed or
+unknown, and posted to a double entry ledger. Whatever the provider never
+answered is chased down afterwards by reconciliation.
 
 | Method | Route | Behaviour |
 | --- | --- | --- |
-| `POST` | `/v1/payments` | Creates a payment. Requires `Idempotency-Key`. Replays the stored response for a repeated key, `409` while a duplicate is still in flight, `422` if the key is reused with a different body. |
+| `POST` | `/v1/payments` | Creates a payment. Requires `Idempotency-Key`. Replays the stored response for a repeated key, `409` while a duplicate is in flight, `422` for a key reused with a different body, `429` past the merchant's rate limit. |
 | `GET` | `/v1/payments/{id}` | Returns a payment, or `404`. |
+| `GET` | `/health` | Fails when PostgreSQL is unreachable. |
+| `GET` | `/metrics` | Prometheus. The worker serves its own on port 8082. |
 
 ## Payment states
 
@@ -86,10 +90,9 @@ around them.
 
 ## Stack
 
-In use: **.NET 9** · ASP.NET Core minimal API · **PostgreSQL 16** · **Dapper** ·
-**Kafka** (Redpanda locally) · Docker Compose · xUnit with **Testcontainers**
-
-Planned: Redis, OpenTelemetry. Neither is referenced by the code yet.
+**.NET 9** · ASP.NET Core minimal API · **PostgreSQL 16** · **Dapper** ·
+**Kafka** (Redpanda locally) · **Redis** · **OpenTelemetry** · Docker Compose ·
+xUnit with **Testcontainers**
 
 ## Running it
 
@@ -113,31 +116,30 @@ running; they do not touch the compose environment.
 
 Built:
 
-- [x] Schema: `payments`, `idempotency_keys`, `outbox`
-- [x] Compose environment, and an image that builds
-- [x] Create and fetch a payment, with idempotency enforced by a unique index
-- [x] Payment state machine and its transition rules
-- [x] The created event written to `outbox` in the same transaction as the payment
-- [x] Retries on transient database faults, real command and connect timeouts
-- [x] A health check that fails when PostgreSQL does
-- [x] A dispatcher that drains `outbox` to Kafka, telling an outage apart from a
-      message the broker will never accept
+- [x] Create and fetch a payment, idempotency enforced by a unique index
+- [x] Payment state machine, with illegal transitions refused by the domain
+- [x] Transactional outbox, drained to Kafka by a dispatcher that tells an outage
+      apart from a message the broker will never accept
+- [x] An idempotent consumer with retries and a dead letter topic
+- [x] A provider connector that records unknown rather than guessing, behind a
+      circuit breaker, against a fake provider that fails on purpose
+- [x] Reconciliation that resolves what the provider never answered
+- [x] Double entry ledger, balanced by a deferred constraint trigger
+- [x] Redis for replayed responses and a per-merchant token bucket in Lua
+- [x] Correlation ids that survive the hop through Kafka, JSON logs, metrics
 - [x] Schema versioned as SQL migrations, applied at startup under an advisory lock
-- [x] 55 tests: integration against real containers, unit for the domain
+- [x] 84 tests against real containers
 
-Two things are worth knowing before reading further. Nothing moves a payment out
-of `created` yet: the transition rules are enforced and tested but have no
-production caller until the worker and the connectors exist. 
+Still open, and deliberately:
 
-Next:
-
-- [ ] `Payments.Worker` as an idempotent consumer, with retries and a DLQ
-- [ ] Two provider connectors that fail on purpose: timeouts, duplicate
-      callbacks, callbacks that arrive early
-- [ ] Double-entry ledger, with the invariant that entries sum to zero
-- [ ] Reconciliation of `unknown` payments
-- [ ] Redis for replayed responses and per-merchant rate limiting
-- [ ] Structured logging, correlation ids, metrics
+- [ ] Refunds. The ledger models them; nothing issues one.
+- [ ] Webhooks from a provider that answers asynchronously.
+- [ ] Routing between several providers, which is where a PSP's conversion rate
+      actually comes from.
+- [ ] `Money` has no ISO 4217 list and no minor-unit exponent, so JPY would be
+      wrong. It needs both before a second currency is taken seriously.
+- [ ] Authentication. `GET /v1/payments/{id}` is unscoped, as recorded in
+      docs/CONTEXT.md.
 
 ## Acceptance tests
 
@@ -147,9 +149,9 @@ The project is done when these hold, not when the endpoints respond.
 | --- | --- | --- |
 | 1 | **yes** | The same idempotency key twice, including twenty times in parallel, yields one payment and identical responses |
 | 2 | **yes** | An illegal state transition is refused by the domain |
-| 3 | not yet | A duplicate provider webhook causes one state change; the second is ignored without error |
-| 4 | not yet | A webhook arriving before the response to the request that caused it does not corrupt the state |
-| 5 | not yet | A provider timeout leaves the payment in `unknown`, reconciliation resolves it, and no second charge is issued |
-| 6 | not yet | Kafka being down for 30 seconds loses no events; the outbox drains on recovery and the consumer absorbs the duplicates |
-| 7 | not yet | Killing the worker mid-processing loses nothing and doubles nothing |
-| 8 | not yet | Ledger entries for every transaction sum to zero |
+| 3 | **yes** | A duplicate provider webhook causes one state change; the second is ignored without error |
+| 4 | not yet | A webhook arriving before the response to the request that caused it does not corrupt the state. No webhook endpoint exists yet |
+| 5 | **yes** | A provider timeout leaves the payment in `unknown`, reconciliation resolves it, and no second charge is issued |
+| 6 | **yes** | Kafka being down for 30 seconds loses no events; the outbox drains on recovery and the consumer absorbs the duplicates |
+| 7 | structurally | Killing the worker mid-processing loses nothing and doubles nothing. True by construction — the offset is committed after the work — but not yet demonstrated by a test that kills the consumer between the two |
+| 8 | **yes** | Ledger entries for every transaction sum to zero |

@@ -1,6 +1,7 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
 using Payments.Core.Messaging;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 
 namespace Payments.Api.Outbox;
@@ -41,6 +42,7 @@ public sealed class OutboxDispatcher(
     EventPublisher publisher,
     IOptions<OutboxOptions> options,
     TimeProvider clock,
+    PaymentMetrics metrics,
     ILogger<OutboxDispatcher> logger) : BackgroundService
 {
     private readonly OutboxOptions _options = options.Value;
@@ -83,6 +85,11 @@ public sealed class OutboxDispatcher(
 
         var result = await store.DispatchBatchAsync(
             publisher.PublishAsync, IsBrokerUnavailable, _options.BatchSize, _options.MaxAttempts, ct);
+
+        if (result.Published > 0)
+        {
+            metrics.EventsPublished(result.Published);
+        }
 
         return result.Outcome switch
         {

@@ -93,6 +93,8 @@ services:
       Provider__Name: "fake"
       Provider__BaseUrl: "http://fake-provider:8080"
       Provider__TimeoutSeconds: "5"
+    ports:
+      - "8082:8080"
     depends_on:
       postgres:
         condition: service_healthy

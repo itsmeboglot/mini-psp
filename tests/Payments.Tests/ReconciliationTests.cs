@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Payments.Core.Domain;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 using Payments.Core.Providers;
 using Payments.Worker;
@@ -139,6 +140,7 @@ public sealed class ReconciliationTests(PaymentsApiFixture fixture) : IClassFixt
                 RetryAfterSeconds = 0,
                 AttemptsBeforeBelievingNotFound = AttemptsBeforeBelievingNotFound
             }),
+            new PaymentMetrics(),
             NullLogger<PaymentReconciler>.Instance);
 
         return await reconciler.SweepAsync(CancellationToken.None);
@@ -163,6 +165,7 @@ public sealed class ReconciliationTests(PaymentsApiFixture fixture) : IClassFixt
         await new PaymentPendingHandler(
                 store, db,
                 new StubProvider(new ProviderResult(ProviderVerdict.Unknown, null, "timeout")),
+                new PaymentMetrics(),
                 NullLogger<PaymentPendingHandler>.Instance)
             .HandleAsync(fixture.PendingEventPayload(pending), "test-correlation", CancellationToken.None);
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Payments.Core.Contracts;
 using Payments.Core.Domain;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 using Payments.Core.Providers;
 
@@ -21,6 +22,7 @@ public sealed class PaymentReconciler(
     DbConnectionFactory db,
     IPaymentProvider provider,
     IOptions<ReconciliationOptions> options,
+    PaymentMetrics metrics,
     ILogger<PaymentReconciler> logger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -108,6 +110,8 @@ public sealed class PaymentReconciler(
                 transitioned.CreatedAt), Json)), ct);
 
         await transaction.CommitAsync(ct);
+
+        metrics.PaymentReconciled(PaymentStatuses.ToWire(next.Value));
 
         logger.LogInformation(
             "Payment {PaymentId} reconciled to {Status} on attempt {Attempts}",

@@ -1,11 +1,16 @@
 using Microsoft.Extensions.Http.Resilience;
+using OpenTelemetry.Metrics;
 using Payments.Core.Messaging;
+using Payments.Core.Observability;
 using Payments.Core.Providers;
 using Polly;
 using Payments.Core.Persistence;
 using Payments.Worker;
 
-var builder = Host.CreateApplicationBuilder(args);
+// A web host for one endpoint. A worker with no way to be scraped has metrics
+// that exist and are never seen, and a metrics port is cheaper than running a
+// collector alongside every process.
+var builder = WebApplication.CreateBuilder(args);
 
 // Same format as the API, and scopes included, so the correlation id a message
 // carries is a searchable field on every line the worker writes about it.
@@ -16,6 +21,11 @@ var connectionString = builder.Configuration.GetConnectionString("Payments")
 
 builder.Services.AddPaymentsPersistence(connectionString);
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<PaymentMetrics>();
+
+builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics
+    .AddMeter(PaymentMetrics.MeterName)
+    .AddPrometheusExporter());
 
 // Scoped, and resolved once per message. The consumer itself is a singleton, so
 // holding these directly would make them captive and hand every message the same
@@ -76,4 +86,9 @@ if (builder.Configuration.GetValue($"{ReconciliationOptions.Section}:Enabled", t
 // Migrations are the API's job. Running them from two places would mean two
 // things racing to define the same schema, and the advisory lock only makes that
 // safe, not sensible.
-await builder.Build().RunAsync();
+var app = builder.Build();
+
+app.MapPrometheusScrapingEndpoint("/metrics");
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+await app.RunAsync();

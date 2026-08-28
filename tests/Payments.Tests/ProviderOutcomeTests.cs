@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Payments.Core.Domain;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 using Payments.Core.Providers;
 using Payments.Worker;
@@ -100,7 +101,7 @@ public sealed class ProviderOutcomeTests(PaymentsApiFixture fixture) : IClassFix
         var store = new PaymentStore(db, NullLogger<PaymentStore>.Instance);
 
         var handler = new PaymentPendingHandler(
-            store, db, provider, NullLogger<PaymentPendingHandler>.Instance);
+            store, db, provider, new PaymentMetrics(), NullLogger<PaymentPendingHandler>.Instance);
 
         await handler.HandleAsync(fixture.PendingEventPayload(payment), "test-correlation", CancellationToken.None);
     }

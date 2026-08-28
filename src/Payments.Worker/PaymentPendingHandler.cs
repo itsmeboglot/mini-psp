@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Payments.Core.Contracts;
 using Payments.Core.Domain;
+using Payments.Core.Observability;
 using Payments.Core.Persistence;
 using Payments.Core.Providers;
 
@@ -21,6 +22,7 @@ public sealed class PaymentPendingHandler(
     PaymentStore payments,
     DbConnectionFactory db,
     IPaymentProvider provider,
+    PaymentMetrics metrics,
     ILogger<PaymentPendingHandler> logger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -42,6 +44,8 @@ public sealed class PaymentPendingHandler(
             return;
         }
 
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+
         var result = await provider.ChargeAsync(new ProviderCharge(
             PaymentId: payment.Id,
             AmountMinor: payment.Amount.MinorUnits,
@@ -50,6 +54,11 @@ public sealed class PaymentPendingHandler(
             // Derived from the payment, so every attempt at this payment carries
             // the same key and the provider can recognise a repeat.
             IdempotencyKey: payment.Id.ToString()), ct);
+
+        metrics.ProviderAnswered(
+            provider.Name,
+            result.Verdict.ToString(),
+            System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
 
         var next = result.Verdict switch
         {
@@ -62,6 +71,7 @@ public sealed class PaymentPendingHandler(
         };
 
         await RecordAsync(payment, next, result, correlationId, ct);
+        metrics.PaymentResolved(PaymentStatuses.ToWire(next), provider.Name);
 
         logger.LogInformation(
             "Payment {PaymentId} is {Status} after {Provider} said {Verdict}{Reason}",
