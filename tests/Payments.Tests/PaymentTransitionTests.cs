@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using Payments.Core.Domain;
 
-namespace Payments.Api.Tests;
+namespace Payments.Tests;
 
 /// <summary>
 /// The lifecycle rules, exercised without a database: these are domain

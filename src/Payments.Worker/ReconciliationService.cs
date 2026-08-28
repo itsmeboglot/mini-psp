@@ -36,13 +36,13 @@ public sealed class ReconciliationOptions
 }
 
 /// <summary>
-/// Resolves payments whose outcome the platform never learned.
+/// Runs <see cref="PaymentReconciler"/> on a schedule.
 /// </summary>
 /// <remarks>
-/// Without this, unknown is a state a payment enters and never leaves: the
-/// provider timed out, nobody knows whether the money moved, and nothing asks.
-/// This is the part of a payment platform that turns an unanswered question into
-/// an answer, and it is the reason unknown is safe to write in the first place.
+/// Without it, unknown is a state a payment enters and never leaves: the provider
+/// timed out, nobody knows whether the money moved, and nothing asks. This is the
+/// part of a payment platform that turns an unanswered question into an answer,
+/// and it is what makes unknown safe to write in the first place.
 /// </remarks>
 public sealed class ReconciliationService(
     IServiceScopeFactory scopes,
@@ -60,7 +60,11 @@ public sealed class ReconciliationService(
         {
             try
             {
-                var resolved = await SweepAsync(stoppingToken);
+                using var scope = scopes.CreateScope();
+                var resolved = await scope.ServiceProvider
+                    .GetRequiredService<PaymentReconciler>()
+                    .SweepAsync(stoppingToken);
+
                 if (resolved > 0)
                 {
                     logger.LogInformation("Reconciliation resolved {Count} payment(s)", resolved);
@@ -81,101 +85,5 @@ public sealed class ReconciliationService(
         }
 
         logger.LogInformation("Reconciliation stopped");
-    }
-
-    private async Task<int> SweepAsync(CancellationToken ct)
-    {
-        using var scope = scopes.CreateScope();
-        var payments = scope.ServiceProvider.GetRequiredService<PaymentStore>();
-        var provider = scope.ServiceProvider.GetRequiredService<IPaymentProvider>();
-        var db = scope.ServiceProvider.GetRequiredService<DbConnectionFactory>();
-
-        var unresolved = await payments.ClaimUnresolvedAsync(
-            _options.BatchSize,
-            TimeSpan.FromSeconds(_options.GraceSeconds),
-            TimeSpan.FromSeconds(_options.RetryAfterSeconds),
-            ct);
-
-        var resolved = 0;
-
-        foreach (var candidate in unresolved)
-        {
-            if (await ResolveAsync(candidate, payments, provider, db, ct))
-            {
-                resolved++;
-            }
-        }
-
-        return resolved;
-    }
-
-    private async Task<bool> ResolveAsync(
-        UnresolvedPayment candidate,
-        PaymentStore payments,
-        IPaymentProvider provider,
-        DbConnectionFactory db,
-        CancellationToken ct)
-    {
-        var payment = candidate.Payment;
-        var status = await provider.GetStatusAsync(payment.Id.ToString(), ct);
-
-        var next = status.Verdict switch
-        {
-            ProviderVerdict.Authorized => PaymentStatus.Authorized,
-            ProviderVerdict.Declined => PaymentStatus.Failed,
-
-            // Only once the provider has denied it enough times to be believed.
-            ProviderVerdict.NotFound when candidate.Attempts >= _options.AttemptsBeforeBelievingNotFound
-                => PaymentStatus.Failed,
-
-            // Still nothing conclusive. Leave it where it is and ask again later;
-            // the claim already recorded that it was tried.
-            _ => (PaymentStatus?)null
-        };
-
-        if (next is null)
-        {
-            logger.LogInformation(
-                "Payment {PaymentId} still unresolved after {Attempts} attempt(s): {Verdict}",
-                payment.Id, candidate.Attempts, status.Verdict);
-
-            return false;
-        }
-
-        var transitioned = payment.TransitionTo(next.Value);
-
-        await using var connection = await db.OpenAsync(ct);
-        await using var transaction = await connection.BeginTransactionAsync(ct);
-
-        if (!await payments.TryApplyTransitionAsync(
-                connection, transaction, transitioned, payment.Version, provider.Name, status.Reference, ct))
-        {
-            // The original charge answered late, or another instance got there
-            // first. Either way somebody now knows more than this sweep did.
-            await transaction.RollbackAsync(CancellationToken.None);
-            return false;
-        }
-
-        await payments.AppendToOutboxAsync(connection, transaction, new OutboxMessage(
-            AggregateId: transitioned.Id,
-            EventType: PaymentResolvedEvent.EventType,
-            Payload: JsonSerializer.Serialize(new PaymentResolvedEvent(
-                transitioned.Id,
-                transitioned.MerchantId,
-                transitioned.Amount.MinorUnits,
-                transitioned.Amount.Currency,
-                PaymentStatuses.ToWire(transitioned.Status),
-                provider.Name,
-                status.Reference,
-                $"reconciled after {candidate.Attempts} attempt(s): {status.Reason}",
-                transitioned.CreatedAt), new JsonSerializerOptions(JsonSerializerDefaults.Web))), ct);
-
-        await transaction.CommitAsync(ct);
-
-        logger.LogInformation(
-            "Payment {PaymentId} reconciled to {Status} on attempt {Attempts}",
-            payment.Id, next, candidate.Attempts);
-
-        return true;
     }
 }

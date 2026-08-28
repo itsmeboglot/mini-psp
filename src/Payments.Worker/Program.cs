@@ -18,6 +18,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 // database connection.
 builder.Services.AddScoped<PaymentCreatedHandler>();
 builder.Services.AddScoped<PaymentPendingHandler>();
+builder.Services.AddScoped<PaymentReconciler>();
 
 var providerName = builder.Configuration.GetValue("Provider:Name", "fake");
 

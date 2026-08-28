@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace Payments.Api.Tests;
+namespace Payments.Tests;
 
 /// <summary>
 /// The outbox exists so that a state change and the announcement of it either

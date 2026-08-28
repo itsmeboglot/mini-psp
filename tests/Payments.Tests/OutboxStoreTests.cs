@@ -3,7 +3,7 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Logging.Abstractions;
 using Payments.Core.Persistence;
 
-namespace Payments.Api.Tests;
+namespace Payments.Tests;
 
 /// <summary>
 /// How the dispatcher treats failure. Nothing here talks to a broker: the

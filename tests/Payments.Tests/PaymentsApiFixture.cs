@@ -3,10 +3,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Payments.Core.Persistence;
+using Payments.Worker;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
-namespace Payments.Api.Tests;
+namespace Payments.Tests;
 
 /// <summary>
 /// Runs the real application against a real PostgreSQL in a container. The
@@ -121,6 +122,64 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<Program>, IAsyncL
 
     public sealed record OutboxState(
         int Attempts, DateTimeOffset? PublishedAt, DateTimeOffset? DeadAt, string? LastError);
+
+    /// <summary>Reads the columns these tests assert on.</summary>
+    public async Task<PaymentState> ReadPaymentAsync(Guid id)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.QuerySingleAsync<PaymentState>(
+            """
+            SELECT status AS Status, version AS Version, provider AS Provider,
+                   provider_payment_id AS ProviderReference,
+                   reconciliation_attempts AS ReconciliationAttempts
+            FROM payments WHERE id = @id
+            """, new { id });
+    }
+
+    public sealed record PaymentState(
+        string Status, int Version, string? Provider, string? ProviderReference, int ReconciliationAttempts);
+
+    /// <summary>
+    /// Moves a merchant's single payment to pending through the real handler, so
+    /// tests start from a state the system actually produces.
+    /// </summary>
+    public async Task<Payments.Core.Domain.Payment> MoveToPendingAsync(Guid merchantId)
+    {
+        var db = new DbConnectionFactory(ConnectionString);
+        var store = new PaymentStore(db, NullLogger<PaymentStore>.Instance);
+        var processor = new IdempotentEventProcessor(db, NullLogger<IdempotentEventProcessor>.Instance);
+        var handler = new PaymentCreatedHandler(store, NullLogger<PaymentCreatedHandler>.Instance);
+
+        var row = await ReadOutboxForMerchantAsync(merchantId);
+
+        await processor.ProcessAsync("test", row.Id,
+            (connection, transaction, ct) => handler.HandleAsync(row.Payload, connection, transaction, ct),
+            CancellationToken.None);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        var id = await connection.ExecuteScalarAsync<Guid>(
+            "SELECT id FROM payments WHERE merchant_id = @merchantId", new { merchantId });
+
+        return (await store.GetAsync(id, CancellationToken.None))!;
+    }
+
+    /// <summary>The payment.pending.v1 payload the dispatcher would have published.</summary>
+    public string PendingEventPayload(Payments.Core.Domain.Payment payment)
+        => System.Text.Json.JsonSerializer.Serialize(
+            new Payments.Core.Contracts.PaymentPendingEvent(
+                payment.Id, payment.MerchantId, payment.Amount.MinorUnits,
+                payment.Amount.Currency, "pending", payment.CreatedAt),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+    private async Task<(long Id, string Payload)> ReadOutboxForMerchantAsync(Guid merchantId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        return await connection.QuerySingleAsync<(long, string)>(
+            """
+            SELECT id, payload::text FROM outbox
+            WHERE payload->>'merchantId' = @merchantId AND event_type = 'payment.created.v1'
+            """, new { merchantId = merchantId.ToString() });
+    }
 
     public async Task<OutboxRow> ReadOutboxAsync(Guid aggregateId)
     {

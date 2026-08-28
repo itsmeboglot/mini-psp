@@ -2,7 +2,7 @@ using System.Reflection;
 using Payments.Core.Contracts;
 using Payments.Core.Persistence;
 
-namespace Payments.Api.Tests;
+namespace Payments.Tests;
 
 /// <summary>
 /// The fingerprint decides whether two requests carrying one idempotency key mean
