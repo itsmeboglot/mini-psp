@@ -109,8 +109,22 @@ Redis, unused so far.
 dotnet test
 ```
 
-Integration tests start their own PostgreSQL container, so Docker must be
-running; they do not touch the compose environment.
+Tests start their own containers, so Docker must be running; they do not touch
+the compose environment.
+
+```bash
+./scripts/demo.sh
+```
+
+Rebuilds the images, brings up a clean stack, and drives every behaviour this
+README claims against it: idempotency, each provider verdict, reconciliation
+correcting a payment the provider had actually charged, the ledger balancing, a
+correlation id crossing three processes, the rate limiter refusing a burst, and
+the health check going red when PostgreSQL stops. Prints a pass or fail for each
+and exits non-zero if any failed. `--fast` skips the rebuild.
+
+It rebuilds by default on purpose: every end-to-end failure this project had was
+an image that did not contain the change being tested.
 
 ## Status
 
