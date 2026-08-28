@@ -156,6 +156,24 @@ public sealed class PaymentEventConsumer(
                 return;
             }
 
+            case PaymentResolvedEvent.EventType:
+            {
+                // Back through the idempotent processor: posting to the ledger is
+                // a database write with nothing outside the transaction, so the
+                // record of having handled it commits with the entries.
+                var processor = scope.ServiceProvider.GetRequiredService<IdempotentEventProcessor>();
+                var handler = scope.ServiceProvider.GetRequiredService<PaymentResolvedHandler>();
+
+                var outcome = await processor.ProcessAsync(
+                    _consumer.Name,
+                    eventId,
+                    (connection, transaction, token) => handler.HandleAsync(payload, connection, transaction, token),
+                    ct);
+
+                logger.LogDebug("Event {EventId}: {Outcome}", eventId, outcome);
+                return;
+            }
+
             default:
                 // Every event type shares one topic so that ordering per payment
                 // survives. Ignoring the rest is normal, not a failure.

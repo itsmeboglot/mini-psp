@@ -30,6 +30,7 @@ public static class PersistenceRegistration
         services.AddScoped<PaymentStore>();
         services.AddScoped<OutboxStore>();
         services.AddScoped<IdempotentEventProcessor>();
+        services.AddScoped<LedgerStore>();
 
         return services;
     }

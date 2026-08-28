@@ -19,6 +19,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<PaymentCreatedHandler>();
 builder.Services.AddScoped<PaymentPendingHandler>();
 builder.Services.AddScoped<PaymentReconciler>();
+builder.Services.AddScoped<PaymentResolvedHandler>();
+builder.Services.Configure<LedgerOptions>(builder.Configuration.GetSection(LedgerOptions.Section));
 
 var providerName = builder.Configuration.GetValue("Provider:Name", "fake");
 
