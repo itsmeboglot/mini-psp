@@ -136,5 +136,9 @@ public sealed class ProviderOutcomeTests(PaymentsApiFixture fixture) : IClassFix
 
         public Task<ProviderResult> GetStatusAsync(string _, CancellationToken __)
             => Task.FromResult(status ?? new ProviderResult(ProviderVerdict.NotFound, null, "no record"));
+
+        public Task<IReadOnlyDictionary<string, ProviderResult>> GetSettlementAsync(CancellationToken _)
+            => Task.FromResult<IReadOnlyDictionary<string, ProviderResult>>(
+                new Dictionary<string, ProviderResult>());
     }
 }

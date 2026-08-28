@@ -61,14 +61,13 @@ public sealed class PaymentReconciler(
             ProviderVerdict.Authorized => PaymentStatus.Authorized,
             ProviderVerdict.Declined => PaymentStatus.Failed,
 
-            // Believed only once the provider has denied it enough times. Status
-            // APIs go briefly inconsistent after exactly the sort of outage that
-            // produced this unknown, and one denial in that window proves nothing.
-            ProviderVerdict.NotFound when candidate.Attempts >= _options.AttemptsBeforeBelievingNotFound
-                => PaymentStatus.Failed,
-
-            // Nothing conclusive. Leave it be and ask again; the claim already
-            // recorded that it was tried.
+            // "Never heard of it" resolves nothing here, however many times it is
+            // said. A status endpoint can be behind after exactly the outage that
+            // produced this unknown, and counting denials only decides how long to
+            // wait before believing something that may still be wrong. Absence is
+            // settled against the provider's own report instead, by
+            // SettlementReconciler, which is the difference between an opinion and
+            // an account.
             _ => (PaymentStatus?)null
         };
 

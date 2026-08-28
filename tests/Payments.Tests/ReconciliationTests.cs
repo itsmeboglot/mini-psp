@@ -66,23 +66,26 @@ public sealed class ReconciliationTests(PaymentsApiFixture fixture) : IClassFixt
         Assert.Equal(1, state.ReconciliationAttempts);
     }
 
+    /// <summary>
+    /// However often a provider denies having heard of a payment, that never adds
+    /// up to a verdict. Counting denials only chooses how long to wait before
+    /// believing something a lagging status endpoint may still be wrong about.
+    /// Absence is settled against the provider's report instead.
+    /// </summary>
     [Fact]
-    public async Task Enough_denials_do_settle_it_as_failed()
+    public async Task No_number_of_denials_resolves_a_payment()
     {
         var payment = await UnknownPaymentAsync();
         var notFound = new ProviderResult(ProviderVerdict.NotFound, null, "no record");
 
-        for (var attempt = 1; attempt < AttemptsBeforeBelievingNotFound; attempt++)
+        for (var attempt = 0; attempt < 6; attempt++)
         {
             await SweepAsync(notFound);
-            Assert.Equal("unknown", (await fixture.ReadPaymentAsync(payment.Id)).Status);
         }
 
-        await SweepAsync(notFound);
-
         var state = await fixture.ReadPaymentAsync(payment.Id);
-        Assert.Equal("failed", state.Status);
-        Assert.Equal(AttemptsBeforeBelievingNotFound, state.ReconciliationAttempts);
+        Assert.Equal("unknown", state.Status);
+        Assert.True(state.ReconciliationAttempts >= 6);
     }
 
     /// <summary>
@@ -182,5 +185,10 @@ public sealed class ReconciliationTests(PaymentsApiFixture fixture) : IClassFixt
 
         public Task<ProviderResult> GetStatusAsync(string _, CancellationToken __)
             => Task.FromResult(result);
+
+        public Task<IReadOnlyDictionary<string, ProviderResult>> GetSettlementAsync(CancellationToken _)
+            => Task.FromResult<IReadOnlyDictionary<string, ProviderResult>>(Settlement);
+
+        public Dictionary<string, ProviderResult> Settlement { get; } = [];
     }
 }

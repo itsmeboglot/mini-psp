@@ -34,6 +34,8 @@ builder.Services.AddScoped<PaymentCreatedHandler>();
 builder.Services.AddScoped<PaymentPendingHandler>();
 builder.Services.AddScoped<PaymentReconciler>();
 builder.Services.AddScoped<PaymentResolvedHandler>();
+builder.Services.AddScoped<SettlementReconciler>();
+builder.Services.Configure<SettlementOptions>(builder.Configuration.GetSection(SettlementOptions.Section));
 builder.Services.Configure<LedgerOptions>(builder.Configuration.GetSection(LedgerOptions.Section));
 
 var providerName = builder.Configuration.GetValue("Provider:Name", "fake");
@@ -81,6 +83,11 @@ builder.Services.AddHostedService<PaymentEventConsumer>();
 if (builder.Configuration.GetValue($"{ReconciliationOptions.Section}:Enabled", true))
 {
     builder.Services.AddHostedService<ReconciliationService>();
+}
+
+if (builder.Configuration.GetValue($"{SettlementOptions.Section}:Enabled", true))
+{
+    builder.Services.AddHostedService<SettlementService>();
 }
 
 // Migrations are the API's job. Running them from two places would mean two

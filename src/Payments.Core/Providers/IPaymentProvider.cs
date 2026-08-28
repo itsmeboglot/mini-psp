@@ -59,4 +59,17 @@ public interface IPaymentProvider
     /// guessing.
     /// </remarks>
     Task<ProviderResult> GetStatusAsync(string idempotencyKey, CancellationToken ct);
+
+    /// <summary>
+    /// Everything the provider holds, keyed by the idempotency key each charge
+    /// was sent under.
+    /// </summary>
+    /// <remarks>
+    /// The authority. A status endpoint answers about one charge and can be wrong
+    /// while it catches up after an outage; a settlement report is the provider's
+    /// own account of what it has, and a charge absent from it is a charge that
+    /// did not happen. That difference is what makes it safe to call a payment
+    /// failed, which no number of status queries ever quite does.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, ProviderResult>> GetSettlementAsync(CancellationToken ct);
 }

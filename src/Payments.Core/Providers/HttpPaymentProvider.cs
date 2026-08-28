@@ -98,6 +98,20 @@ public sealed class HttpPaymentProvider(
         }
     }
 
+    public async Task<IReadOnlyDictionary<string, ProviderResult>> GetSettlementAsync(CancellationToken ct)
+    {
+        using var response = await client.GetAsync("/settlement", ct);
+        response.EnsureSuccessStatusCode();
+
+        var lines = await response.Content.ReadFromJsonAsync<List<SettlementLine>>(Json, ct) ?? [];
+
+        logger.LogInformation("Provider {Provider} settlement lists {Count} charge(s)", Name, lines.Count);
+
+        return lines.ToDictionary(
+            line => line.IdempotencyKey,
+            line => Interpret(line.IdempotencyKey, new ChargeResponse(line.Status, line.ProviderReference, null)));
+    }
+
     private ProviderResult Interpret(object context, ChargeResponse? body)
     {
         if (body is null)
@@ -119,4 +133,6 @@ public sealed class HttpPaymentProvider(
     }
 
     private sealed record ChargeResponse(string Status, string ProviderReference, string? Reason);
+
+    private sealed record SettlementLine(string IdempotencyKey, string Status, string ProviderReference);
 }

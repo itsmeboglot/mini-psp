@@ -26,6 +26,7 @@ public sealed class PaymentMetrics : IDisposable
     private readonly Counter<long> _published;
     private readonly Counter<long> _reconciled;
     private readonly Histogram<double> _providerDuration;
+    private readonly Counter<long> _discrepancies;
 
     public PaymentMetrics()
     {
@@ -43,6 +44,10 @@ public sealed class PaymentMetrics : IDisposable
 
         _providerDuration = _meter.CreateHistogram<double>(
             "provider.charge.duration", "ms", "How long a provider took to answer a charge.");
+
+        _discrepancies = _meter.CreateCounter<long>(
+            "settlement.discrepancies", "payments",
+            "Payments the provider's report contradicts. Should be zero, and is worth waking someone for.");
     }
 
     public void PaymentCreated() => _created.Add(1);
@@ -60,6 +65,10 @@ public sealed class PaymentMetrics : IDisposable
 
     public void PaymentReconciled(string status)
         => _reconciled.Add(1, new KeyValuePair<string, object?>("status", status));
+
+    public void SettlementDiscrepancy(string ourStatus, string providerStatus)
+        => _discrepancies.Add(1, new KeyValuePair<string, object?>("ours", ourStatus),
+                                 new KeyValuePair<string, object?>("theirs", providerStatus));
 
     public void ProviderAnswered(string provider, string verdict, double milliseconds)
         => _providerDuration.Record(milliseconds,

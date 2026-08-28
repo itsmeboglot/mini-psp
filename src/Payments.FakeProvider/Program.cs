@@ -70,6 +70,13 @@ app.MapPost("/charges", async (ChargeRequest request, HttpContext context, ILogg
 app.MapGet("/charges/{key}", (string key) =>
     charges.TryGetValue(key, out var charge) ? Results.Ok(charge) : Results.NotFound());
 
+// Everything this provider holds. A real one publishes this as a file at the end
+// of the day, and it is the record both sides settle against: what the status
+// endpoint says under load is a guess about the provider's state, this is the
+// provider's state.
+app.MapGet("/settlement", () => Results.Ok(
+    charges.Select(entry => new SettlementLine(entry.Key, entry.Value.Status, entry.Value.ProviderReference))));
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
@@ -79,3 +86,5 @@ static string ProviderReference() => $"fp_{Guid.CreateVersion7():N}";
 internal sealed record ChargeRequest(long AmountMinor, string Currency, string MerchantReference);
 
 internal sealed record ChargeResponse(string Status, string ProviderReference, string? Reason);
+
+internal sealed record SettlementLine(string IdempotencyKey, string Status, string ProviderReference);
