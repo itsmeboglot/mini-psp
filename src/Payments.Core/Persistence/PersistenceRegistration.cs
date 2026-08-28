@@ -49,23 +49,21 @@ public static class PersistenceRegistration
     /// </remarks>
     public static IServiceCollection AddRedis(this IServiceCollection services, string? connectionString)
     {
-        if (string.IsNullOrWhiteSpace(connectionString))
+        services.AddSingleton(_ =>
         {
-            services.AddSingleton<IConnectionMultiplexer?>(_ => null);
-        }
-        else
-        {
-            services.AddSingleton<IConnectionMultiplexer?>(provider =>
+            if (string.IsNullOrWhiteSpace(connectionString))
             {
-                var configuration = ConfigurationOptions.Parse(connectionString);
+                return new RedisConnection(null);
+            }
 
-                // Rather than blocking startup until Redis answers: it is optional,
-                // and an optional dependency that can stop the process is not.
-                configuration.AbortOnConnectFail = false;
+            var configuration = ConfigurationOptions.Parse(connectionString);
 
-                return ConnectionMultiplexer.Connect(configuration);
-            });
-        }
+            // Rather than blocking startup until Redis answers: it is optional, and
+            // an optional dependency that can stop the process is not.
+            configuration.AbortOnConnectFail = false;
+
+            return new RedisConnection(ConnectionMultiplexer.Connect(configuration));
+        });
 
         services.AddSingleton<IdempotencyCache>();
         services.AddSingleton<TokenBucketLimiter>();

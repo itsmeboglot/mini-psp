@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Warnings became invisible once builds were being filtered for errors, and a
+      real one sat there unnoticed. Making them fail the build is the only version
+      of "pay attention to warnings" that survives being in a hurry.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

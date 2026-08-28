@@ -1,3 +1,4 @@
+using Payments.Core.Caching;
 using StackExchange.Redis;
 
 namespace Payments.Core.RateLimiting;
@@ -35,7 +36,7 @@ public sealed record RateLimitDecision(bool Allowed, int Remaining, TimeSpan Ret
 /// moment.
 /// </remarks>
 public sealed class TokenBucketLimiter(
-    IConnectionMultiplexer? redis,
+    RedisConnection redis,
     TimeProvider clock,
     ILogger<TokenBucketLimiter> logger)
 {
@@ -83,14 +84,14 @@ public sealed class TokenBucketLimiter(
 
     public async Task<RateLimitDecision> TryAcquireAsync(Guid merchantId, RateLimitOptions options)
     {
-        if (redis is null || !options.Enabled)
+        if (redis.Database is not { } database || !options.Enabled)
         {
             return new RateLimitDecision(true, options.Capacity, TimeSpan.Zero);
         }
 
         try
         {
-            var result = (RedisValue[])(await redis.GetDatabase().ScriptEvaluateAsync(
+            var result = (RedisValue[])(await database.ScriptEvaluateAsync(
                 Script,
                 [$"ratelimit:{merchantId:N}"],
                 [

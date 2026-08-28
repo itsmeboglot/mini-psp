@@ -17,7 +17,7 @@ namespace Payments.Core.Caching;
 /// Every Redis failure is treated as a miss. Losing Redis costs latency; it must
 /// not cost a payment, and it must not turn into an outage.
 /// </remarks>
-public sealed class IdempotencyCache(IConnectionMultiplexer? redis, ILogger<IdempotencyCache> logger)
+public sealed class IdempotencyCache(RedisConnection redis, ILogger<IdempotencyCache> logger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -27,18 +27,18 @@ public sealed class IdempotencyCache(IConnectionMultiplexer? redis, ILogger<Idem
     /// </summary>
     private static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
 
-    public bool IsEnabled => redis is not null;
+    public bool IsEnabled => redis.IsAvailable;
 
     public async Task<CachedResponse?> GetAsync(Guid merchantId, string idempotencyKey)
     {
-        if (redis is null)
+        if (redis.Database is not { } database)
         {
             return null;
         }
 
         try
         {
-            var value = await redis.GetDatabase().StringGetAsync(Key(merchantId, idempotencyKey));
+            var value = await database.StringGetAsync(Key(merchantId, idempotencyKey));
 
             return value.HasValue ? JsonSerializer.Deserialize<CachedResponse>(value!, Json) : null;
         }
@@ -52,14 +52,14 @@ public sealed class IdempotencyCache(IConnectionMultiplexer? redis, ILogger<Idem
     public async Task SetAsync(
         Guid merchantId, string idempotencyKey, string requestHash, StoredResponse response)
     {
-        if (redis is null)
+        if (redis.Database is not { } database)
         {
             return;
         }
 
         try
         {
-            await redis.GetDatabase().StringSetAsync(
+            await database.StringSetAsync(
                 Key(merchantId, idempotencyKey),
                 JsonSerializer.Serialize(
                     new CachedResponse(requestHash, response.StatusCode, response.Body), Json),
