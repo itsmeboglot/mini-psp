@@ -126,6 +126,21 @@ and exits non-zero if any failed. `--fast` skips the rebuild.
 It rebuilds by default on purpose: every end-to-end failure this project had was
 an image that did not contain the change being tested.
 
+```bash
+./scripts/db.sh stuck        # payments nothing has resolved
+./scripts/db.sh ledger       # balances, and whether they sum to zero
+./scripts/db.sh outbox       # published, waiting, dead, and the oldest unpublished
+./scripts/db.sh trace <id>   # one payment, its events and its ledger entries
+./scripts/db.sh              # an interactive psql session
+```
+
+Uses the psql already inside the Postgres container, so it needs no client
+installed. For a browser instead:
+
+```bash
+docker compose --profile tools up -d adminer   # localhost:8083
+```
+
 ## Status
 
 Built:
