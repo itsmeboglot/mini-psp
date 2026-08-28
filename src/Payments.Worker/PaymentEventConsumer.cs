@@ -105,27 +105,39 @@ public sealed class PaymentEventConsumer(
             return;
         }
 
-        for (var attempt = 1; ; attempt++)
+        using var failureScope = scopes.CreateScope();
+        var failures = failureScope.ServiceProvider.GetRequiredService<ConsumerFailureStore>();
+
+        while (true)
         {
             try
             {
                 await DispatchAsync(eventType, eventId, result.Message.Value, correlationId, ct);
-                return;
-            }
-            catch (Exception e) when (attempt < _consumer.MaxAttempts && e is not OperationCanceledException)
-            {
-                logger.LogWarning(e,
-                    "Handling event {EventId} failed on attempt {Attempt} of {MaxAttempts}",
-                    eventId, attempt, _consumer.MaxAttempts);
 
-                await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt), clock, ct);
+                // Nothing is failing about this event any more.
+                await failures.ForgetAsync(_consumer.Name, eventId, ct);
+                return;
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
-                // Out of attempts. Set it aside and move on, because a partition
-                // blocked on one message stops every payment behind it.
-                await DeadLetterAsync(deadLetters, result, e.Message, ct);
-                return;
+                // Counted in the database rather than in a loop variable, so a
+                // restart does not hand this message a fresh allowance.
+                var attempts = await failures.RecordFailureAsync(_consumer.Name, eventId, e.Message, ct);
+
+                if (attempts >= _consumer.MaxAttempts)
+                {
+                    // Set it aside and move on: a partition blocked on one message
+                    // stops every payment behind it.
+                    await DeadLetterAsync(deadLetters, result, e.Message, ct);
+                    await failures.ForgetAsync(_consumer.Name, eventId, ct);
+                    return;
+                }
+
+                logger.LogWarning(e,
+                    "Handling event {EventId} failed, attempt {Attempts} of {MaxAttempts}",
+                    eventId, attempts, _consumer.MaxAttempts);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(200 * attempts), clock, ct);
             }
         }
     }

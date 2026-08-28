@@ -34,6 +34,7 @@ public static class PersistenceRegistration
         services.AddScoped<OutboxStore>();
         services.AddScoped<IdempotentEventProcessor>();
         services.AddScoped<LedgerStore>();
+        services.AddScoped<ConsumerFailureStore>();
 
         return services;
     }
