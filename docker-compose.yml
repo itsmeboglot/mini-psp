@@ -108,9 +108,20 @@ services:
     # not there yet. Restarting until it is beats coordinating startup order.
     restart: unless-stopped
 
-  # Not started by default. `docker compose --profile tools up -d adminer` when a
-  # browser is wanted; psql in the postgres container covers everything else and
-  # needs no image at all.
+  # Neither of these is started by default. `docker compose --profile tools up -d`
+  # when a browser is wanted; rpk and psql are already inside their containers and
+  # cover everything else without an extra image.
+  console:
+    image: redpandadata/console:v2.7.2
+    profiles: ["tools"]
+    ports:
+      - "8084:8080"
+    environment:
+      KAFKA_BROKERS: "redpanda:29092"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
   adminer:
     image: adminer:4-standalone
     profiles: ["tools"]

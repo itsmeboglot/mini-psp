@@ -134,11 +134,19 @@ an image that did not contain the change being tested.
 ./scripts/db.sh              # an interactive psql session
 ```
 
-Uses the psql already inside the Postgres container, so it needs no client
-installed. For a browser instead:
+```bash
+./scripts/kafka.sh topics       # what exists and how much is in it
+./scripts/kafka.sh lag          # how far behind the consumer is
+./scripts/kafka.sh read 20      # recent messages, one readable line each
+./scripts/kafka.sh tail         # follow them live
+./scripts/kafka.sh dlq          # what was set aside, and why
+```
+
+Both use the client already inside the relevant container, so neither needs
+anything installed. For a browser instead:
 
 ```bash
-docker compose --profile tools up -d adminer   # localhost:8083
+docker compose --profile tools up -d   # adminer on 8083, redpanda console on 8084
 ```
 
 ## Status
