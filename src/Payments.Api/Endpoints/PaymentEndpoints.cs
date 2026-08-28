@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Payments.Core.Contracts;
 using Payments.Core.Domain;
+using Payments.Core.Caching;
 using Payments.Core.Persistence;
+using Payments.Core.RateLimiting;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Payments.Api.Endpoints;
@@ -27,6 +29,7 @@ public static class PaymentEndpoints
             // written as pre-serialised content, which carries no type metadata.
             .Produces<PaymentResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
@@ -41,6 +44,9 @@ public static class PaymentEndpoints
         CreatePaymentRequest request,
         [FromHeader(Name = IdempotencyHeader)] string? idempotencyKey,
         PaymentStore store,
+        IdempotencyCache cache,
+        TokenBucketLimiter limiter,
+        IOptions<RateLimitOptions> rateLimit,
         IOptions<JsonOptions> jsonOptions,
         TimeProvider clock,
         CancellationToken ct)
@@ -48,6 +54,32 @@ public static class PaymentEndpoints
         if (Validate(request, idempotencyKey, out var amount) is { } failure)
         {
             return failure;
+        }
+
+        var allowance = await limiter.TryAcquireAsync(request.MerchantId, rateLimit.Value);
+
+        if (!allowance.Allowed)
+        {
+            return Results.Problem(
+                detail: "Too many requests. Retry after the interval in the Retry-After header.",
+                title: "Rate limit exceeded",
+                statusCode: StatusCodes.Status429TooManyRequests,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["retryAfterSeconds"] = Math.Ceiling(allowance.RetryAfter.TotalSeconds)
+                });
+        }
+
+        var requestHash = RequestHash.Of(request);
+
+        // Cheapest path first: a retry of a request already answered need not open
+        // a transaction only to have the unique index reject it. A hit is
+        // trustworthy because entries are written after the payment commits; a
+        // miss says nothing, and the request carries on to the database.
+        if (await cache.GetAsync(request.MerchantId, idempotencyKey!) is { } cached
+            && cached.RequestHash == requestHash)
+        {
+            return Results.Content(cached.Body, "application/json", statusCode: cached.StatusCode);
         }
 
         var payment = Payment.Create(request.MerchantId, amount, clock);
@@ -73,7 +105,14 @@ public static class PaymentEndpoints
                 jsonOptions.Value.SerializerOptions));
 
         var outcome = await store.CreateAsync(
-            payment, idempotencyKey!, RequestHash.Of(request), response, message, ct);
+            payment, idempotencyKey!, requestHash, response, message, ct);
+
+        if (outcome is CreateOutcome.Created)
+        {
+            // Only now, and only after the commit. Caching before it would let a
+            // rolled back payment be replayed as though it existed.
+            await cache.SetAsync(request.MerchantId, idempotencyKey!, requestHash, response);
+        }
 
         return outcome switch
         {

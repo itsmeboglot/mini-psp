@@ -1,4 +1,5 @@
 using Payments.Api.Endpoints;
+using Payments.Core.RateLimiting;
 using Payments.Core.Messaging;
 using Payments.Api.Outbox;
 using Payments.Core.Persistence;
@@ -9,6 +10,11 @@ var connectionString = builder.Configuration.GetConnectionString("Payments")
     ?? throw new InvalidOperationException("ConnectionStrings:Payments is not configured.");
 
 builder.Services.AddPaymentsPersistence(connectionString);
+
+// Optional by design: the cache is an optimisation and the limiter fails open, so
+// the platform is correct without Redis, only slower and less protected.
+builder.Services.AddRedis(builder.Configuration.GetConnectionString("Redis"));
+builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.Section));
 
 // Time is injected rather than read from DateTimeOffset.UtcNow so that expiry and
 // reconciliation behaviour can be tested at chosen instants.

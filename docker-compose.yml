@@ -58,6 +58,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Payments: "Host=postgres;Port=5432;Database=minipsp;Username=minipsp;Password=minipsp"
+      ConnectionStrings__Redis: "redis:6379"
       Kafka__BootstrapServers: "redpanda:29092"
     ports:
       - "8080:8080"
