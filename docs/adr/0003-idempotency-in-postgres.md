@@ -23,6 +23,20 @@ Two concurrent requests with the same key race into that insert. One commits;
 the other gets a unique violation, reads the stored response, and returns it. The
 losing request never creates a second payment.
 
+Worth being precise about how that race actually resolves, because it is easy to
+describe wrongly. The loser does not fail immediately: PostgreSQL blocks it on
+the winner's transaction, because the winner's index entry is not yet final and
+the winner may still roll back. Measured with two sessions, a loser waited 4.1
+seconds for a winner holding its transaction for 6. Only when the winner commits
+does the loser get 23505, and by then the stored response is visible to it.
+
+That has a consequence for the InFlight case, which reports that a key is held by
+a request whose response does not exist yet. Because the loser waits, that state
+is close to unreachable in normal operation: by the time the violation surfaces,
+the winner has committed. It remains as a guard against a key deleted by
+retention between the commit and the read, or a read served by a lagging replica.
+It is an edge, not a path.
+
 Redis may cache the stored response to spare the database a read on repeated
 retries. It is never consulted to decide whether the payment may be created.
 
